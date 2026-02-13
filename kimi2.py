@@ -67,7 +67,7 @@ if current_batch:
         if not data.empty:
             rows_needed = math.ceil(len(current_batch) / COLS)
             # DPI tinggi untuk resolusi lebih tajam (200 dpi)
-            fig, axes = plt.subplots(rows_needed, COLS, figsize=(20, CHART_HEIGHT * rows_needed), dpi=700)
+            fig, axes = plt.subplots(rows_needed, COLS, figsize=(20, CHART_HEIGHT * rows_needed), dpi=1080)
             
             if rows_needed == 1:
                 axes = [axes] if COLS == 1 else axes
