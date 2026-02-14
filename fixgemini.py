@@ -127,7 +127,7 @@ with tabs[0]:
     c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 1])
     with c1: tf = st.selectbox("Waktu", ["5d", "1mo", "3mo", "6mo", "1y"], 2)
     with c2: min_p = st.number_input("Min Rp", 0, step=50)
-    with c3: max_p = st.number_input("Max Rp", 100000, value=100000, step=50)
+    with c3: max_p = st.number_input("Max Rp", 100, value=100000, step=50)
     with c4: c_type = st.radio("Grafik", ["Candle", "Line"], horizontal=True)
     with c5: show_ma = st.checkbox("MA20", True)
 
