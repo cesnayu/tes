@@ -7,20 +7,37 @@ from datetime import datetime, timedelta
 import math
 
 # --- 1. KONFIGURASI HALAMAN ---
-st.set_page_config(layout="wide", page_title="Observation")
+st.set_page_config(layout="wide", page_title="Observation Pro")
 
-# CSS Kustom untuk tampilan lebih padat & menghilangkan padding berlebih
+# CSS Kustom: Tampilan Padat & Kotak Win/Loss
 st.markdown("""
 <style>
     .block-container {padding-top: 1rem; padding-bottom: 3rem;}
     div[data-testid="stMetricValue"] {font-size: 1rem;}
     .stPlotlyChart {height: 250px;}
-    button[kind="secondary"] {margin-top: 10px;}
+    
+    /* CSS untuk Win/Loss Box */
+    .wl-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 4px;
+        width: 100%;
+        max-width: 150px;
+    }
+    .wl-box {
+        width: 100%;
+        padding-top: 100%; /* Aspect Ratio 1:1 */
+        position: relative;
+        border-radius: 2px;
+    }
+    .wl-content {
+        position: absolute;
+        top: 0; left: 0; bottom: 0; right: 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 2. DATA STATIC (LIST SAHAM) ---
-# Pastikan BBCA.JK dan BBRI.JK ada di sini jika ingin dijadikan default
+# --- 2. DATA STATIC ---
 LIST_SAHAM_IHSG = [
     "BBCA.JK", "BBRI.JK", "BMRI.JK", "BBNI.JK", "ASII.JK", "TLKM.JK", "UNVR.JK", "ICBP.JK", "GOTO.JK", "KLBF.JK",
     "AMRT.JK", "MDKA.JK", "ADRO.JK", "UNTR.JK", "CPIN.JK", "INCO.JK", "PGAS.JK", "ITMG.JK", "PTBA.JK", "ANTM.JK",
@@ -30,27 +47,25 @@ LIST_SAHAM_IHSG = [
     "ACES.JK", "MAPI.JK", "MAPA.JK", "ERAA.JK", "SIDO.JK", "KAEF.JK", "HEAL.JK", "MIKA.JK", "SILO.JK", "SAME.JK"
 ]
 
-# --- 3. STATE MANAGEMENT (PAGINATION) ---
-if 'page' not in st.session_state:
-    st.session_state.page = 1
+# --- 3. STATE MANAGEMENT ---
+if 'page' not in st.session_state: st.session_state.page = 1
+# Simulator State
+if 'sim_balance' not in st.session_state: st.session_state.sim_balance = 100000000 # 100 Juta
+if 'sim_portfolio' not in st.session_state: st.session_state.sim_portfolio = {} # Dictionary {Ticker: Qty}
+if 'sim_history' not in st.session_state: st.session_state.sim_history = []
 
-# --- 4. FUNGSI BACKEND (CACHING) ---
+# --- 4. FUNGSI BACKEND ---
 
 @st.cache_data(ttl=3600)
 def get_fundamental_info(ticker):
-    """Mengambil data PBV dan PER dengan Error Handling"""
     try:
         stock = yf.Ticker(ticker)
         info = stock.info
-        pbv = info.get('priceToBook', 0)
-        per = info.get('trailingPE', 0)
-        return pbv, per
-    except:
-        return 0, 0
+        return info.get('priceToBook', 0), info.get('trailingPE', 0)
+    except: return 0, 0
 
 @st.cache_data(ttl=900)
 def get_data_bulk(tickers, period="3mo", interval="1d", start=None, end=None):
-    """Download data bulk dengan penanganan MultiIndex"""
     if not tickers: return pd.DataFrame()
     try:
         if start and end:
@@ -58,8 +73,7 @@ def get_data_bulk(tickers, period="3mo", interval="1d", start=None, end=None):
         else:
             data = yf.download(tickers, period=period, interval=interval, group_by='ticker', progress=False, threads=True)
         return data
-    except Exception:
-        return pd.DataFrame()
+    except: return pd.DataFrame()
 
 def format_rupiah(value):
     if pd.isna(value): return "0"
@@ -69,25 +83,16 @@ def format_rupiah(value):
 
 def create_compact_candle(df, ticker, ma20=True, ma200=False):
     fig = go.Figure()
-    fig.add_trace(go.Candlestick(
-        x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'],
-        name="Price", showlegend=False
-    ))
+    fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="Price", showlegend=False))
     if ma20 and len(df) > 20:
-        ma_20 = df['Close'].rolling(window=20).mean()
-        fig.add_trace(go.Scatter(x=df.index, y=ma_20, line=dict(color='orange', width=1), name="MA20", showlegend=False))
+        fig.add_trace(go.Scatter(x=df.index, y=df['Close'].rolling(20).mean(), line=dict(color='orange', width=1), showlegend=False))
     if ma200 and len(df) > 200:
-        ma_200 = df['Close'].rolling(window=200).mean()
-        fig.add_trace(go.Scatter(x=df.index, y=ma_200, line=dict(color='blue', width=1), name="MA200", showlegend=False))
-
-    last_price = df['Close'].iloc[-1]
-    color_title = "green" if df['Close'].iloc[-1] >= df['Open'].iloc[-1] else "red"
+        fig.add_trace(go.Scatter(x=df.index, y=df['Close'].rolling(200).mean(), line=dict(color='blue', width=1), showlegend=False))
     
+    color_title = "green" if df['Close'].iloc[-1] >= df['Open'].iloc[-1] else "red"
     fig.update_layout(
-        title=dict(text=f"{ticker} ({format_rupiah(last_price)})", font=dict(size=12, color=color_title), x=0.5, y=0.95),
-        margin=dict(l=10, r=10, t=30, b=10),
-        height=200,
-        xaxis_rangeslider_visible=False,
+        title=dict(text=f"{ticker} ({format_rupiah(df['Close'].iloc[-1])})", font=dict(size=12, color=color_title), x=0.5, y=0.95),
+        margin=dict(l=5, r=5, t=30, b=5), height=200, xaxis_rangeslider_visible=False,
         yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', tickfont=dict(size=8)),
         xaxis=dict(showgrid=False, showticklabels=False)
     )
@@ -95,247 +100,320 @@ def create_compact_candle(df, ticker, ma20=True, ma200=False):
 
 def create_advanced_chart(df, ticker, style='candle', pbv=0, per=0):
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
-    
-    # Chart Harga
     if style == 'candle':
         fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="OHLC"), row=1, col=1)
     else:
         fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', line=dict(color='green', width=2), name="Close"), row=1, col=1)
-
-    # MA20
+    
     if len(df) > 20:
-        ma_20 = df['Close'].rolling(window=20).mean()
-        fig.add_trace(go.Scatter(x=df.index, y=ma_20, line=dict(color='orange', width=1.5), name="MA20"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df['Close'].rolling(20).mean(), line=dict(color='orange', width=1.5), name="MA20"), row=1, col=1)
 
-    # Volume
-    colors = ['red' if row['Open'] - row['Close'] >= 0 else 'green' for index, row in df.iterrows()]
+    colors = ['red' if r['Open'] - r['Close'] >= 0 else 'green' for i, r in df.iterrows()]
     fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors, name="Volume"), row=2, col=1)
 
-    title_text = f"{ticker} | Price: {format_rupiah(df['Close'].iloc[-1])} | PBV: {pbv:.2f}x | PER: {per:.2f}x"
-    fig.update_layout(title=dict(text=title_text, font=dict(size=16), x=0), height=500, margin=dict(l=10, r=10, t=40, b=10), xaxis_rangeslider_visible=False, showlegend=False)
+    fig.update_layout(
+        title=dict(text=f"{ticker} | PBV: {pbv:.2f}x | PER: {per:.2f}x", font=dict(size=14), x=0),
+        height=500, margin=dict(l=10, r=10, t=30, b=10), xaxis_rangeslider_visible=False, showlegend=False
+    )
     return fig
 
-# --- 6. UI DASHBOARD ---
-st.title("📈 Observation")
+# --- 6. UI DASHBOARD UTAMA ---
+st.title("📈 Observation Pro")
 
-tabs = st.tabs(["📋 List (Grid)", "⚖️ Compare & Watchlist", "📅 Weekly Recap", "🚀 Performa", "🎲 Win/Loss", "🎯 Simulator"])
+tabs = st.tabs(["📋 List", "⚖️ Compare", "📅 Weekly", "🚀 Performa", "🎲 Win/Loss", "🎯 Simulator"])
 
 # ==========================
-# TAB 1: LIST (GRID SYSTEM)
+# TAB 1: LIST (GRID)
 # ==========================
 with tabs[0]:
-    # --- Filter Bar ---
     c1, c2, c3, c4 = st.columns([2, 2, 2, 2])
-    with c1:
-        timeframe_list = st.selectbox("Timeframe", ["5d", "1mo", "3mo", "6mo", "1y", "ytd"], index=2, key="tf_grid")
-    with c2:
-        min_price = st.number_input("Min Harga", value=0, step=50)
-    with c3:
-        max_price = st.number_input("Max Harga", value=100000, step=50)
-    with c4:
-        show_ma20_list = st.checkbox("Show MA20", value=True)
-        show_ma200_list = st.checkbox("Show MA200", value=False)
+    with c1: tf_grid = st.selectbox("Timeframe", ["5d", "1mo", "3mo", "6mo", "1y"], index=2)
+    with c2: min_p = st.number_input("Min Price", 0, step=50)
+    with c3: max_p = st.number_input("Max Price", 100000, step=50)
+    with c4: show_ma = st.checkbox("Show MA20", True)
 
-    # --- Pagination Logic ---
     ITEMS_PER_PAGE = 50
     total_pages = math.ceil(len(LIST_SAHAM_IHSG) / ITEMS_PER_PAGE)
     
-    # Navigasi Halaman
-    col_p1, col_p2, col_p3 = st.columns([1, 8, 1])
-    with col_p1:
-        if st.button("⬅️ Prev", key="prev_btn"):
-            if st.session_state.page > 1:
-                st.session_state.page -= 1
-                st.rerun()
-    with col_p2:
-        st.markdown(f"<div style='text-align: center; padding-top: 10px; font-weight: bold;'>Page {st.session_state.page} of {total_pages}</div>", unsafe_allow_html=True)
-    with col_p3:
-        if st.button("Next ➡️", key="next_btn"):
-            if st.session_state.page < total_pages:
-                st.session_state.page += 1
-                st.rerun()
+    cp1, cp2, cp3 = st.columns([1, 8, 1])
+    with cp1: 
+        if st.button("⬅️ Prev") and st.session_state.page > 1: st.session_state.page -= 1; st.rerun()
+    with cp2: st.markdown(f"<div style='text-align: center'>Page {st.session_state.page}/{total_pages}</div>", unsafe_allow_html=True)
+    with cp3: 
+        if st.button("Next ➡️") and st.session_state.page < total_pages: st.session_state.page += 1; st.rerun()
 
-    # --- Slicing & Rendering ---
     start_idx = (st.session_state.page - 1) * ITEMS_PER_PAGE
-    end_idx = start_idx + ITEMS_PER_PAGE
-    batch_tickers = LIST_SAHAM_IHSG[start_idx:end_idx]
+    batch = LIST_SAHAM_IHSG[start_idx:start_idx + ITEMS_PER_PAGE]
 
-    if batch_tickers:
-        with st.spinner("Loading Grid Data..."):
-            df_batch = get_data_bulk(batch_tickers, period=timeframe_list)
-        
-        # Menggunakan Container Grid
-        cols = st.columns(5) # 5 Kolom per baris
-        idx_counter = 0
-
-        # Loop berdasarkan list batch agar URUT
-        for t in batch_tickers:
+    if batch:
+        with st.spinner("Loading Grid..."):
+            df_batch = get_data_bulk(batch, period=tf_grid)
+        cols = st.columns(5)
+        idx = 0
+        for t in batch:
             try:
-                # Logika ekstraksi data yfinance (MultiIndex handling)
-                if len(batch_tickers) > 1:
-                    if t in df_batch.columns.levels[0]: # Cek apakah ticker ada di kolom
-                        df_t = df_batch[t].dropna()
-                    else:
-                        continue
-                else:
-                    df_t = df_batch.dropna() # Jika cuma 1 saham
+                dft = df_batch[t].dropna() if len(batch) > 1 else df_batch.dropna()
+                if dft.empty or not (min_p <= dft['Close'].iloc[-1] <= max_p): continue
+                with cols[idx % 5]: st.plotly_chart(create_compact_candle(dft, t, ma20=show_ma), use_container_width=True)
+                idx += 1
+            except: continue
 
-                if df_t.empty: continue
-                
-                last_price = df_t['Close'].iloc[-1]
-                
-                # Terapkan Filter Harga
-                if not (min_price <= last_price <= max_price):
-                    continue
-
-                # Render Grafik
-                with cols[idx_counter % 5]:
-                    st.plotly_chart(
-                        create_compact_candle(df_t, t, ma20=show_ma20_list, ma200=show_ma200_list),
-                        use_container_width=True
-                    )
-                idx_counter += 1
-            except Exception:
-                continue
-
-# ====================================
-# TAB 2: COMPARE & WATCHLIST
-# ====================================
+# ==========================
+# TAB 2: COMPARE
+# ==========================
 with tabs[1]:
-    st.markdown("### 🔍 Analisis & Perbandingan")
+    sel_stocks = st.multiselect("Pilih Saham:", LIST_SAHAM_IHSG, ["BBCA.JK", "BBRI.JK"])
+    c_style = st.radio("Style:", ["Candle", "Line"], horizontal=True)
+    period_c = st.select_slider("Range:", ["1mo", "3mo", "6mo", "1y", "2y"], value="6mo")
     
-    # --- PERBAIKAN UTAMA: SAFETY CHECK DEFAULT VALUE ---
-    default_tickers = ["BBCA.JK", "BBRI.JK"]
-    # Hanya masukkan default jika ada di LIST_SAHAM_IHSG untuk mencegah Crash
-    safe_defaults = [t for t in default_tickers if t in LIST_SAHAM_IHSG]
-
-    col_w1, col_w2, col_w3 = st.columns([3, 1, 1])
-    with col_w1:
-        selected_stocks = st.multiselect(
-            "Cari / Pilih Saham (Watchlist):", 
-            options=LIST_SAHAM_IHSG, 
-            default=safe_defaults # Menggunakan variable aman
-        )
-    with col_w2:
-        chart_style = st.radio("Style:", ["Candle", "Line"], horizontal=True)
-        style_code = 'candle' if chart_style == "Candle" else 'line'
-    with col_w3:
-        mode_waktu = st.radio("Mode:", ["Preset", "Cycle"], horizontal=True)
-
-    # Timeframe
-    start_date, end_date = None, None
-    period_sel = "3mo"
-    
-    if mode_waktu == "Preset":
-        period_sel = st.select_slider("Rentang:", options=["5d", "1mo", "3mo", "6mo", "1y", "2y", "5y"], value="6mo")
-    else:
-        c_d1, c_d2 = st.columns(2)
-        with c_d1: start_input = st.date_input("Mulai", value=datetime.now() - timedelta(days=60))
-        with c_d2: end_input = st.date_input("Sampai", value=datetime.now())
-        start_date = start_input.strftime("%Y-%m-%d")
-        end_date = end_input.strftime("%Y-%m-%d")
-
-    st.divider()
-
-    if selected_stocks:
-        data_compare = get_data_bulk(selected_stocks, period=period_sel, start=start_date, end=end_date)
-        
-        for ticker in selected_stocks:
+    if sel_stocks:
+        data_c = get_data_bulk(sel_stocks, period=period_c)
+        for t in sel_stocks:
             try:
-                # Logika ekstraksi data aman
-                if len(selected_stocks) > 1:
-                    if ticker in data_compare.columns.levels[0]:
-                        df_c = data_compare[ticker].dropna()
-                    else: continue
-                else:
-                    df_c = data_compare.dropna()
-
-                if df_c.empty: continue
-
-                # Info Fundamental (Lazy Load)
-                pbv, per = get_fundamental_info(ticker)
-                
-                st.plotly_chart(
-                    create_advanced_chart(df_c, ticker, style=style_code, pbv=pbv, per=per), 
-                    use_container_width=True
-                )
-                st.markdown("---")
-            except Exception:
-                continue
+                dfc = data_c[t].dropna() if len(sel_stocks) > 1 else data_c.dropna()
+                if dfc.empty: continue
+                pbv, per = get_fundamental_info(t)
+                st.plotly_chart(create_advanced_chart(dfc, t, style=c_style.lower(), pbv=pbv, per=per), use_container_width=True)
+                st.divider()
+            except: pass
 
 # ==========================
 # TAB 3: WEEKLY RECAP
 # ==========================
 with tabs[2]:
-    st.header("📅 Weekly Performance")
+    st.header("📅 Weekly Recap")
     
-    wr_col1, wr_col2 = st.columns([3, 1])
-    with wr_col1:
-        # Safety check untuk default multiselect juga
-        default_weekly = LIST_SAHAM_IHSG[:10] if len(LIST_SAHAM_IHSG) >= 10 else LIST_SAHAM_IHSG
-        weekly_search = st.multiselect("Cari Saham:", options=LIST_SAHAM_IHSG, default=default_weekly)
-    with wr_col2:
-        if st.button("Reset"):
-            st.rerun()
+    # Logic: Jika search kosong -> Pakai SEMUA list. Jika ada isi -> Pakai yang di-search.
+    w_search = st.multiselect("Filter Saham (Kosongkan untuk melihat semua):", LIST_SAHAM_IHSG)
+    target_weekly = w_search if w_search else LIST_SAHAM_IHSG
+    
+    # Batasi load jika terlalu banyak (opsional, tapi disarankan)
+    if len(target_weekly) > 100:
+        st.warning("Menampilkan 100 saham pertama untuk kinerja optimal.")
+        target_weekly = target_weekly[:100]
 
-    if weekly_search:
-        today = datetime.now()
-        start_of_week = today - timedelta(days=today.weekday())
-        days_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
-        
-        w_start = (start_of_week - timedelta(days=7)).strftime("%Y-%m-%d")
-        w_data = yf.download(weekly_search, start=w_start, group_by='ticker', progress=False, threads=True)
-        
-        weekly_rows = []
-        for t in weekly_search:
-            try:
-                if len(weekly_search) > 1:
-                    if t in w_data.columns.levels[0]: df_w = w_data[t].dropna()
-                    else: continue
-                else: df_w = w_data.dropna()
-
-                if df_w.empty: continue
-                
-                df_w["Return"] = df_w["Close"].pct_change() * 100
-                
-                row = {
-                    "Ticker": t, 
-                    "Price": format_rupiah(df_w["Close"].iloc[-1]), 
-                    "Today (%)": round(df_w["Return"].iloc[-1], 2)
-                }
-                
-                acc_weekly = 0
-                for i in range(5):
-                    target_date = (start_of_week + timedelta(days=i)).date()
-                    val = 0.0
-                    if target_date in df_w.index.date:
-                         # Ambil return pada tanggal tersebut
-                         locs = df_w.index[df_w.index.date == target_date]
-                         if not locs.empty:
-                             val = df_w.loc[locs[0], "Return"]
-                    
-                    row[days_names[i]] = round(val, 2)
-                    acc_weekly += val
-                
-                row["Weekly Acc (%)"] = round(acc_weekly, 2)
-                weekly_rows.append(row)
-            except: continue
-        
-        if weekly_rows:
-            def color_returns(val):
-                if isinstance(val, (int, float)):
-                    return f'color: {"#00C805" if val > 0 else "#FF333A" if val < 0 else ""}'
-                return ''
+    if target_weekly:
+        with st.spinner("Calculating Weekly Data..."):
+            # Fetch data 10 hari ke belakang untuk aman
+            today = datetime.now()
+            start_week = today - timedelta(days=today.weekday())
+            fetch_start = (start_week - timedelta(days=7)).strftime("%Y-%m-%d")
             
-            st.dataframe(
-                pd.DataFrame(weekly_rows).style.applymap(color_returns, subset=['Today (%)', 'Weekly Acc (%)'] + days_names),
-                use_container_width=True, hide_index=True
-            )
+            w_data = get_data_bulk(target_weekly, start=fetch_start, end=(today + timedelta(days=1)).strftime("%Y-%m-%d"))
+            
+            w_rows = []
+            days_en = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+            
+            for t in target_weekly:
+                try:
+                    dfw = w_data[t].dropna() if len(target_weekly) > 1 else w_data.dropna()
+                    if dfw.empty: continue
+                    
+                    dfw['Ret'] = dfw['Close'].pct_change() * 100
+                    last_p = dfw['Close'].iloc[-1]
+                    
+                    row = {"Ticker": t, "Price": format_rupiah(last_p)}
+                    
+                    acc = 0
+                    for i, d_name in enumerate(days_en):
+                        t_date = (start_week + timedelta(days=i)).date()
+                        # Match date
+                        val = 0.0
+                        matches = dfw[dfw.index.date == t_date]
+                        if not matches.empty:
+                            val = matches['Ret'].iloc[0]
+                        row[d_name] = val
+                        acc += val
+                    
+                    row["Total (%)"] = acc
+                    w_rows.append(row)
+                except: continue
+            
+            if w_rows:
+                df_res = pd.DataFrame(w_rows)
+                # Styling
+                def style_color(v):
+                    if isinstance(v, (int, float)):
+                        return f'color: {"#00C805" if v > 0 else "#FF333A" if v < 0 else ""}'
+                    return ""
+                
+                st.dataframe(
+                    df_res.style.applymap(style_color, subset=days_en + ["Total (%)"]).format("{:.2f}", subset=days_en + ["Total (%)"]),
+                    use_container_width=True, hide_index=True
+                )
 
-# Placeholder Tabs
-with tabs[3]: st.info("Maintenance: Performa")
-with tabs[4]: st.info("Maintenance: Win/Loss")
-with tabs[5]: st.info("Maintenance: Simulator")
+# ==========================
+# TAB 4: PERFORMA
+# ==========================
+with tabs[3]:
+    st.header("🚀 Performance Metrics")
+    p_sel = st.multiselect("Pilih Saham:", LIST_SAHAM_IHSG, default=LIST_SAHAM_IHSG[:5])
+    
+    if p_sel:
+        with st.spinner("Analyzing Performance..."):
+            # Ambil data 1 tahun + buffer
+            p_data = get_data_bulk(p_sel, period="1y")
+            p_rows = []
+            
+            for t in p_sel:
+                try:
+                    dfp = p_data[t].dropna() if len(p_sel) > 1 else p_data.dropna()
+                    if dfp.empty: continue
+                    
+                    curr = dfp['Close'].iloc[-1]
+                    
+                    def get_change(days):
+                        if len(dfp) < days: return 0.0
+                        prev = dfp['Close'].iloc[-days]
+                        return ((curr - prev) / prev) * 100
+
+                    # YTD Calculation
+                    curr_year = datetime.now().year
+                    df_ytd = dfp[dfp.index.year == curr_year]
+                    ytd_val = ((curr - df_ytd['Open'].iloc[0]) / df_ytd['Open'].iloc[0] * 100) if not df_ytd.empty else 0.0
+
+                    p_rows.append({
+                        "Ticker": t,
+                        "Price": format_rupiah(curr),
+                        "1 Week (%)": get_change(5),
+                        "1 Month (%)": get_change(20),
+                        "3 Month (%)": get_change(60),
+                        "6 Month (%)": get_change(120),
+                        "YTD (%)": ytd_val
+                    })
+                except: continue
+            
+            if p_rows:
+                df_perf = pd.DataFrame(p_rows)
+                def color_perf(v):
+                    if isinstance(v, (int, float)):
+                        return f'color: {"#00C805" if v > 0 else "#FF333A" if v < 0 else ""}'
+                    return ""
+                
+                st.dataframe(
+                    df_perf.style.applymap(color_perf, subset=["1 Week (%)", "1 Month (%)", "3 Month (%)", "6 Month (%)", "YTD (%)"])
+                                 .format("{:.2f}", subset=["1 Week (%)", "1 Month (%)", "3 Month (%)", "6 Month (%)", "YTD (%)"]),
+                    use_container_width=True, hide_index=True
+                )
+
+# ==========================
+# TAB 5: WIN/LOSS (20 DAYS)
+# ==========================
+with tabs[4]:
+    st.header("🎲 Win/Loss Heatmap (Last 20 Days)")
+    wl_sel = st.multiselect("Cari Saham:", LIST_SAHAM_IHSG, default=["BBCA.JK", "GOTO.JK"])
+    
+    if wl_sel:
+        # Ambil data 2 bulan untuk memastikan dapat 20 hari trading
+        wl_data = get_data_bulk(wl_sel, period="3mo")
+        
+        for t in wl_sel:
+            try:
+                dfw = wl_data[t].dropna() if len(wl_sel) > 1 else wl_data.dropna()
+                if dfw.empty: continue
+                
+                # Hitung perubahan dan ambil 20 terakhir
+                dfw['Change'] = dfw['Close'].pct_change()
+                last_20 = dfw['Change'].tail(20).tolist()
+                
+                # Jika data kurang dari 20, pad dengan 0
+                if len(last_20) < 20:
+                    last_20 = [0] * (20 - len(last_20)) + last_20
+                
+                # Render HTML Grid
+                st.subheader(f"{t}")
+                
+                html_grid = '<div class="wl-grid">'
+                for val in last_20:
+                    color = "#00C805" if val > 0 else "#FF333A" if val < 0 else "#DDDDDD"
+                    # Tooltip sederhana dengan title
+                    html_grid += f'<div class="wl-box"><div class="wl-content" style="background-color: {color};" title="{val*100:.2f}%"></div></div>'
+                html_grid += '</div>'
+                
+                st.markdown(html_grid, unsafe_allow_html=True)
+                st.caption("Kotak berurutan dari kiri ke kanan, baris atas ke bawah (20 Hari Terakhir). Hijau = Naik, Merah = Turun.")
+                st.divider()
+
+            except Exception as e: st.error(f"Error {t}")
+
+# ==========================
+# TAB 6: SIMULATOR
+# ==========================
+with tabs[5]:
+    st.header("🎯 Simple Paper Trading")
+    
+    # --- Sidebar Info ---
+    col_sim1, col_sim2 = st.columns([1, 2])
+    
+    with col_sim1:
+        st.metric("Sisa Saldo (IDR)", format_rupiah(st.session_state.sim_balance))
+        
+        with st.form("order_form"):
+            st.subheader("Buat Transaksi")
+            sim_ticker = st.selectbox("Saham", LIST_SAHAM_IHSG)
+            sim_action = st.radio("Aksi", ["BUY", "SELL"], horizontal=True)
+            sim_qty = st.number_input("Jumlah Lot (1 Lot = 100 Lembar)", min_value=1, value=1)
+            
+            # Get real price for validation
+            sim_price = 0
+            if st.form_submit_button("Submit Order"):
+                stock_info = yf.Ticker(sim_ticker).history(period="1d")
+                if not stock_info.empty:
+                    sim_price = stock_info['Close'].iloc[-1]
+                    total_val = sim_price * sim_qty * 100
+                    
+                    if sim_action == "BUY":
+                        if st.session_state.sim_balance >= total_val:
+                            st.session_state.sim_balance -= total_val
+                            st.session_state.sim_portfolio[sim_ticker] = st.session_state.sim_portfolio.get(sim_ticker, 0) + sim_qty
+                            st.session_state.sim_history.append({"Date": datetime.now(), "Ticker": sim_ticker, "Action": "BUY", "Price": sim_price, "Qty": sim_qty})
+                            st.success(f"BUY {sim_ticker} Sukses!")
+                            st.rerun()
+                        else:
+                            st.error("Saldo tidak cukup!")
+                    elif sim_action == "SELL":
+                        curr_qty = st.session_state.sim_portfolio.get(sim_ticker, 0)
+                        if curr_qty >= sim_qty:
+                            st.session_state.sim_balance += total_val
+                            st.session_state.sim_portfolio[sim_ticker] -= sim_qty
+                            if st.session_state.sim_portfolio[sim_ticker] == 0:
+                                del st.session_state.sim_portfolio[sim_ticker]
+                            st.session_state.sim_history.append({"Date": datetime.now(), "Ticker": sim_ticker, "Action": "SELL", "Price": sim_price, "Qty": sim_qty})
+                            st.success(f"SELL {sim_ticker} Sukses!")
+                            st.rerun()
+                        else:
+                            st.error("Barang tidak cukup!")
+                else:
+                    st.error("Gagal mengambil harga pasar.")
+
+    with col_sim2:
+        st.subheader("Portofolio Saat Ini")
+        if st.session_state.sim_portfolio:
+            port_rows = []
+            # Fetch current prices for portfolio
+            port_tickers = list(st.session_state.sim_portfolio.keys())
+            curr_data = get_data_bulk(port_tickers, period="1d")
+            
+            total_asset = 0
+            for t, qty in st.session_state.sim_portfolio.items():
+                try:
+                    # Handle price
+                    dft = curr_data[t] if len(port_tickers) > 1 else curr_data
+                    curr_p = dft['Close'].iloc[-1]
+                    val = curr_p * qty * 100
+                    total_asset += val
+                    port_rows.append({"Ticker": t, "Lot": qty, "Last Price": format_rupiah(curr_p), "Value (IDR)": format_rupiah(val)})
+                except: pass
+            
+            st.dataframe(pd.DataFrame(port_rows), use_container_width=True)
+            st.metric("Total Aset Saham", format_rupiah(total_asset))
+            st.metric("Total Equity (Cash + Saham)", format_rupiah(st.session_state.sim_balance + total_asset))
+        else:
+            st.info("Portofolio Kosong.")
+        
+        st.divider()
+        st.subheader("Riwayat Transaksi")
+        if st.session_state.sim_history:
+            st.dataframe(pd.DataFrame(st.session_state.sim_history), use_container_width=True)
 
 st.caption(f"Last Update: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
