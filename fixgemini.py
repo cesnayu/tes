@@ -14,32 +14,39 @@ st.markdown("""
 <style>
     .block-container {padding-top: 1rem; padding-bottom: 3rem;}
     div[data-testid="stMetricValue"] {font-size: 1rem;}
-    .stPlotlyChart {height: 280px;} /* Tinggi chart grid diperbesar sedikit */
+    .stPlotlyChart {height: 280px;}
     
-    /* CSS untuk Win/Loss Box */
+    /* CSS Win/Loss yang Diperbaiki */
+    .wl-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+    .wl-title {
+        font-weight: bold;
+        margin-bottom: 5px;
+        text-align: center;
+    }
     .wl-grid {
         display: grid;
-        grid-template-columns: repeat(5, 1fr); /* 5 kolom per baris grid kecil */
-        gap: 2px;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 3px;
         width: 100%;
+        max-width: 200px; /* Batasi lebar agar rapi */
     }
     .wl-box {
-        width: 100%;
-        padding-top: 80%; /* Aspect ratio kotak */
+        aspect-ratio: 1 / 1;
         position: relative;
-        border-radius: 2px;
+        border-radius: 3px;
         cursor: help;
-    }
-    .wl-content {
-        position: absolute;
-        top: 0; left: 0; bottom: 0; right: 0;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 10px; /* Ukuran font angka di dalam kotak */
+        font-size: 10px;
         font-weight: bold;
         color: white;
-        text-shadow: 1px 1px 1px rgba(0,0,0,0.5);
+        text-shadow: 0px 0px 2px rgba(0,0,0,0.8);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -56,13 +63,11 @@ LIST_SAHAM_IHSG = [
 
 # --- 3. STATE MANAGEMENT ---
 if 'page' not in st.session_state: st.session_state.page = 1
-# Simulator State
-if 'sim_balance' not in st.session_state: st.session_state.sim_balance = 100000000 # 100 Juta
-if 'sim_portfolio' not in st.session_state: st.session_state.sim_portfolio = {} # Dictionary {Ticker: Qty}
+if 'sim_balance' not in st.session_state: st.session_state.sim_balance = 100000000
+if 'sim_portfolio' not in st.session_state: st.session_state.sim_portfolio = {}
 if 'sim_history' not in st.session_state: st.session_state.sim_history = []
 
 # --- 4. FUNGSI BACKEND ---
-
 @st.cache_data(ttl=3600)
 def get_fundamental_info(ticker):
     try:
@@ -75,10 +80,11 @@ def get_fundamental_info(ticker):
 def get_data_bulk(tickers, period="3mo", interval="1d", start=None, end=None):
     if not tickers: return pd.DataFrame()
     try:
+        # PENTING: auto_adjust=True membantu menormalkan data
         if start and end:
-            data = yf.download(tickers, start=start, end=end, interval=interval, group_by='ticker', progress=False, threads=True)
+            data = yf.download(tickers, start=start, end=end, interval=interval, group_by='ticker', progress=False, threads=True, auto_adjust=True)
         else:
-            data = yf.download(tickers, period=period, interval=interval, group_by='ticker', progress=False, threads=True)
+            data = yf.download(tickers, period=period, interval=interval, group_by='ticker', progress=False, threads=True, auto_adjust=True)
         return data
     except: return pd.DataFrame()
 
@@ -94,29 +100,34 @@ def format_volume(value):
     return f"{value:.0f}"
 
 # --- 5. FUNGSI VISUALISASI ---
-
-def create_compact_chart(df, ticker, ma20=True, chart_type="Candle"):
+def create_chart(df, ticker, ma20=True, chart_type="Candle"):
     fig = go.Figure()
     
-    # Switch antara Candle dan Line
+    # Line Chart
     if chart_type == "Line":
         color_line = '#00C805' if df['Close'].iloc[-1] >= df['Close'].iloc[0] else '#FF333A'
         fig.add_trace(go.Scatter(
             x=df.index, y=df['Close'], mode='lines', 
             line=dict(color=color_line, width=2), name="Price"
         ))
-        # Area fill untuk Line chart agar lebih cantik
         fig.add_trace(go.Scatter(
             x=df.index, y=df['Close'], fill='tozeroy', mode='none',
             fillcolor=f"rgba{tuple(int(color_line.lstrip('#')[i:i+2], 16) for i in (0, 2, 4)) + (0.1,)}",
             showlegend=False
         ))
+        # Hapus rangebreaks pada Line agar tidak "gepeng" ke kiri
+        xaxis_config = dict(showgrid=False, showticklabels=False, type="date")
+    
+    # Candle Chart
     else:
         fig.add_trace(go.Candlestick(
             x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], 
             name="Price", showlegend=False
         ))
+        # Candle butuh rangebreaks untuk hari libur
+        xaxis_config = dict(showgrid=False, showticklabels=False, rangeslider=dict(visible=False))
 
+    # MA20
     if ma20 and len(df) > 20:
         fig.add_trace(go.Scatter(x=df.index, y=df['Close'].rolling(20).mean(), line=dict(color='orange', width=1), showlegend=False, name="MA20"))
     
@@ -125,32 +136,14 @@ def create_compact_chart(df, ticker, ma20=True, chart_type="Candle"):
     
     fig.update_layout(
         title=dict(text=f"{ticker} ({format_rupiah(last_price)})", font=dict(size=14, color=color_title), x=0.5, y=0.95),
-        margin=dict(l=5, r=5, t=30, b=5), height=250, xaxis_rangeslider_visible=False,
+        margin=dict(l=10, r=10, t=30, b=10), 
+        height=250,
         yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)', tickfont=dict(size=8)),
-        xaxis=dict(showgrid=False, showticklabels=False)
+        xaxis=xaxis_config
     )
     return fig
 
-def create_advanced_chart(df, ticker, style='candle', pbv=0, per=0):
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.7, 0.3])
-    if style == 'candle':
-        fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name="OHLC"), row=1, col=1)
-    else:
-        fig.add_trace(go.Scatter(x=df.index, y=df['Close'], mode='lines', line=dict(color='green', width=2), name="Close"), row=1, col=1)
-    
-    if len(df) > 20:
-        fig.add_trace(go.Scatter(x=df.index, y=df['Close'].rolling(20).mean(), line=dict(color='orange', width=1.5), name="MA20"), row=1, col=1)
-
-    colors = ['red' if r['Open'] - r['Close'] >= 0 else 'green' for i, r in df.iterrows()]
-    fig.add_trace(go.Bar(x=df.index, y=df['Volume'], marker_color=colors, name="Volume"), row=2, col=1)
-
-    fig.update_layout(
-        title=dict(text=f"{ticker} | PBV: {pbv:.2f}x | PER: {per:.2f}x", font=dict(size=14), x=0),
-        height=500, margin=dict(l=10, r=10, t=30, b=10), xaxis_rangeslider_visible=False, showlegend=False
-    )
-    return fig
-
-# --- 6. UI DASHBOARD UTAMA ---
+# --- 6. UI DASHBOARD ---
 st.title("📈 Observation Pro")
 
 tabs = st.tabs(["📋 List", "⚖️ Compare", "📅 Market Recap", "🎲 Win/Loss", "🎯 Simulator"])
@@ -160,13 +153,13 @@ tabs = st.tabs(["📋 List", "⚖️ Compare", "📅 Market Recap", "🎲 Win/Lo
 # ==========================
 with tabs[0]:
     c1, c2, c3, c4, c5 = st.columns([1.5, 1.5, 1.5, 1.5, 1.5])
-    with c1: tf_grid = st.selectbox("Timeframe", ["5d", "1mo", "3mo", "6mo", "1y"], index=2)
-    with c2: min_p = st.number_input("Min Price", 0, step=50)
-    with c3: max_p = st.number_input("Max Price", 100000, step=50)
-    with c4: chart_type_sel = st.radio("Grafik", ["Candle", "Line"], horizontal=True)
-    with c5: show_ma = st.checkbox("Show MA20", True)
+    with c1: tf_grid = st.selectbox("Timeframe", ["5d", "1mo", "3mo", "6mo", "1y"], index=2, key="tg")
+    with c2: min_p = st.number_input("Min Price", 0, step=50, key="minp")
+    with c3: max_p = st.number_input("Max Price", 100000, step=50, key="maxp")
+    with c4: chart_type_sel = st.radio("Grafik", ["Candle", "Line"], horizontal=True, key="ctype")
+    with c5: show_ma = st.checkbox("Show MA20", True, key="sma")
 
-    ITEMS_PER_PAGE = 40 # Disesuaikan agar pas 4 kolom x 10 baris
+    ITEMS_PER_PAGE = 20 # Kurangi jadi 20 biar ringan
     total_pages = math.ceil(len(LIST_SAHAM_IHSG) / ITEMS_PER_PAGE)
     
     cp1, cp2, cp3 = st.columns([1, 8, 1])
@@ -183,92 +176,97 @@ with tabs[0]:
         with st.spinner("Loading Grid..."):
             df_batch = get_data_bulk(batch, period=tf_grid)
         
-        # Grid 4 Kolom
         cols = st.columns(4)
         idx = 0
         for t in batch:
             try:
-                # MultiIndex handling
-                if len(batch) > 1:
+                # Robust extraction for single/multi ticker
+                if len(batch) == 1:
+                    dft = df_batch # Single ticker returns simple DF
+                    # yfinance kadang return empty kalau error
+                    if dft.empty: continue 
+                else:
                     if t in df_batch.columns.levels[0]:
-                        dft = df_batch[t].dropna()
+                        dft = df_batch[t]
                     else: continue
-                else: dft = df_batch.dropna()
-
-                if dft.empty or not (min_p <= dft['Close'].iloc[-1] <= max_p): continue
+                
+                dft = dft.dropna()
+                if dft.empty: continue
+                
+                # Filter Price
+                if not (min_p <= dft['Close'].iloc[-1] <= max_p): continue
                 
                 with cols[idx % 4]: 
                     st.plotly_chart(
-                        create_compact_chart(dft, t, ma20=show_ma, chart_type=chart_type_sel), 
+                        create_chart(dft, t, ma20=show_ma, chart_type=chart_type_sel), 
                         use_container_width=True
                     )
                 idx += 1
-            except Exception as e: continue
+            except Exception: continue
 
 # ==========================
 # TAB 2: COMPARE
 # ==========================
 with tabs[1]:
-    sel_stocks = st.multiselect("Pilih Saham:", LIST_SAHAM_IHSG, ["BBCA.JK", "BBRI.JK"])
-    c_style = st.radio("Style:", ["Candle", "Line"], horizontal=True)
-    period_c = st.select_slider("Range:", ["1mo", "3mo", "6mo", "1y", "2y"], value="6mo")
-    
+    sel_stocks = st.multiselect("Pilih Saham:", LIST_SAHAM_IHSG, ["BBCA.JK", "BBRI.JK"], key="ms_comp")
     if sel_stocks:
-        data_c = get_data_bulk(sel_stocks, period=period_c)
+        data_c = get_data_bulk(sel_stocks, period="6mo")
         for t in sel_stocks:
             try:
                 dfc = data_c[t].dropna() if len(sel_stocks) > 1 else data_c.dropna()
                 if dfc.empty: continue
                 pbv, per = get_fundamental_info(t)
-                st.plotly_chart(create_advanced_chart(dfc, t, style=c_style.lower(), pbv=pbv, per=per), use_container_width=True)
-                st.divider()
+                st.plotly_chart(create_advanced_chart(dfc, t, pbv=pbv, per=per), use_container_width=True)
             except: pass
 
 # ==========================
-# TAB 3: MARKET RECAP (Ex Weekly)
+# TAB 3: MARKET RECAP
 # ==========================
 with tabs[2]:
-    st.header("📅 Market Recap & Performance")
+    st.header("📅 Market Recap")
     
-    # Fitur Search: Default Kosong = Semua
-    w_search = st.multiselect("Cari Saham (Bisa pilih banyak, kosongkan untuk semua):", LIST_SAHAM_IHSG)
-    
-    # Logic: Jika search ada isi, gunakan search. Jika kosong, gunakan semua.
+    # Fitur Search Multi
+    w_search = st.multiselect("Cari Saham (Kosong = Semua):", LIST_SAHAM_IHSG, key="ms_recap")
     target_weekly = w_search if w_search else LIST_SAHAM_IHSG
     
-    # Optimasi: Jika load semua, batasi 100 biar gak crash memory
-    is_truncated = False
-    if len(target_weekly) > 100:
-        target_weekly = target_weekly[:100]
-        is_truncated = True
+    # Batasi jika terlalu banyak untuk mencegah lag
+    if len(target_weekly) > 50 and not w_search:
+        st.info(f"Menampilkan 50 saham pertama dari {len(target_weekly)}. Gunakan search untuk spesifik.")
+        target_weekly = target_weekly[:50]
 
-    if st.button("Refresh Data") or target_weekly:
-        if is_truncated: st.warning("⚠️ Menampilkan 100 saham pertama untuk kinerja optimal.")
-        
-        with st.spinner("Calculating Data (1 Year History)..."):
-            # Fetch 1 Year data untuk hitung 1M, 6M, 1Y
-            w_data = get_data_bulk(target_weekly, period="1y")
+    if st.button("Load Data Recap"):
+        with st.spinner("Calculating..."):
+            # Fetch data 2 tahun untuk aman (YTD dan 1 Year butuh data lama)
+            w_data = get_data_bulk(target_weekly, period="2y")
             
             w_rows = []
             days_en = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
-            
-            today = datetime.now()
-            start_week = today - timedelta(days=today.weekday())
-            
+            today = datetime.now().date()
+            start_week = today - timedelta(days=today.weekday()) # Senin minggu ini
+
             for t in target_weekly:
                 try:
-                    dfw = w_data[t].dropna() if len(target_weekly) > 1 else w_data.dropna()
+                    # Robust extraction for Single/Multi Ticker
+                    if len(target_weekly) == 1:
+                        dfw = w_data
+                    else:
+                        if t in w_data.columns.levels[0]: dfw = w_data[t]
+                        else: continue
+                    
+                    dfw = dfw.dropna()
                     if dfw.empty: continue
                     
-                    # Data Points
                     curr = dfw['Close'].iloc[-1]
                     vol = dfw['Volume'].iloc[-1]
                     
-                    # Helper Percent Change
-                    def get_pct(days_back):
-                        if len(dfw) < days_back: return 0.0
-                        prev = dfw['Close'].iloc[-days_back]
-                        return ((curr - prev) / prev) * 100
+                    # Helper untuk Return %
+                    def get_return(delta_days):
+                        target_date = dfw.index[-1] - timedelta(days=delta_days)
+                        # Cari tanggal terdekat di masa lalu
+                        idx = dfw.index.get_indexer([target_date], method='nearest')[0]
+                        if idx < 0: return 0.0
+                        prev_price = dfw['Close'].iloc[idx]
+                        return ((curr - prev_price) / prev_price) * 100
 
                     row = {
                         "Ticker": t, 
@@ -276,41 +274,31 @@ with tabs[2]:
                         "Volume": format_volume(vol)
                     }
                     
-                    # Weekly Breakdown
+                    # Weekly Breakdown (Real Data)
                     acc = 0
                     for i, d_name in enumerate(days_en):
-                        t_date = (start_week + timedelta(days=i)).date()
+                        t_date = start_week + timedelta(days=i)
                         val = 0.0
-                        # Check date exists in index
-                        matches = dfw[dfw.index.date == t_date]
-                        if not matches.empty:
-                            val = matches['Close'].pct_change().iloc[0] * 100 # Approx return that day
-                            # Correct logic: Need daily return relative to prev day close
-                            # Simplified: matches['pct_change'] if calculated before
-                        
-                        # Re-calculate exact return for that specific date row
-                        if t_date in dfw.index.date:
+                        # Cek apakah tanggal ada di index
+                        if pd.Timestamp(t_date) in dfw.index:
                             loc = dfw.index.get_loc(pd.Timestamp(t_date))
-                            if loc > 0:
-                                p_today = dfw['Close'].iloc[loc]
+                            if loc > 0: # Butuh hari sebelumnya untuk hitung %
+                                p_now = dfw['Close'].iloc[loc]
                                 p_prev = dfw['Close'].iloc[loc-1]
-                                val = ((p_today - p_prev)/p_prev) * 100
-
+                                val = ((p_now - p_prev) / p_prev) * 100
                         row[d_name] = val
                         acc += val
                     
                     row["Weekly (%)"] = acc
-                    row["1 Month (%)"] = get_pct(20)
-                    row["6 Month (%)"] = get_pct(120)
-                    row["1 Year (%)"] = get_pct(240)
+                    row["1 Month (%)"] = get_return(30)
+                    row["6 Month (%)"] = get_return(180)
+                    row["1 Year (%)"] = get_return(365) # Menggunakan 365 hari kalender
                     
                     w_rows.append(row)
                 except Exception as e: continue
             
             if w_rows:
                 df_res = pd.DataFrame(w_rows)
-                
-                # Format Kolom Warna
                 numeric_cols = days_en + ["Weekly (%)", "1 Month (%)", "6 Month (%)", "1 Year (%)"]
                 
                 def style_color(v):
@@ -320,168 +308,129 @@ with tabs[2]:
                 
                 st.dataframe(
                     df_res.style.applymap(style_color, subset=numeric_cols).format("{:.2f}", subset=numeric_cols),
-                    use_container_width=True, hide_index=True
+                    use_container_width=True, 
+                    hide_index=True,
+                    height=500 # Kunci tinggi tabel agar tidak auto scroll
                 )
             else:
-                st.info("Data tidak tersedia.")
+                st.warning("Data tidak ditemukan untuk saham yang dipilih.")
 
 # ==========================
 # TAB 4: WIN/LOSS (CENTERED)
 # ==========================
 with tabs[3]:
-    st.header("🎲 Win/Loss Heatmap (Last 20 Days)")
+    st.header("🎲 Win/Loss Heatmap")
     
-    # 1. Pilih Saham
-    wl_sel = st.multiselect("Pilih Saham (Max 4 per baris akan disusun tengah):", LIST_SAHAM_IHSG, default=["BBCA.JK", "GOTO.JK"])
+    wl_sel = st.multiselect("Pilih Saham (Disusun Tengah):", LIST_SAHAM_IHSG, default=["BBCA.JK", "GOTO.JK"], key="wl_ms")
     
     if wl_sel:
-        # Ambil Data
         wl_data = get_data_bulk(wl_sel, period="3mo")
         
-        # Pecah list saham menjadi chunks of 4 (Baris)
+        # Grid System 4 Kolom
         chunk_size = 4
         chunks = [wl_sel[i:i + chunk_size] for i in range(0, len(wl_sel), chunk_size)]
         
         for chunk in chunks:
-            # Logic Centering:
-            # Gunakan st.columns dengan padding kiri kanan dinamis
-            # Jika 1 saham: padding besar, konten, padding besar
-            # Jika 4 saham: full width
-            
+            # Logic Centering dengan Columns
             count = len(chunk)
+            if count == 1: cols = st.columns([1.5, 1, 1.5]) # Center
+            elif count == 2: cols = st.columns([1, 1.2, 1.2, 1]) # Center 2
+            elif count == 3: cols = st.columns([0.2, 1, 1, 1, 0.2]) # Center 3
+            else: cols = st.columns(4) # Full 4
             
-            # Setup Kolom Layout (Tengah)
-            if count == 1:
-                cols = st.columns([1.5, 1, 1.5])
-                active_col_indices = [1]
-            elif count == 2:
-                cols = st.columns([1, 1, 1, 1]) # Padding | Item | Item | Padding -> Salah
-                # Lebih baik: Padding | Item | Item | Padding
-                cols = st.columns([1, 1.5, 1.5, 1])
-                active_col_indices = [1, 2]
-            elif count == 3:
-                cols = st.columns([0.5, 1, 1, 1, 0.5])
-                active_col_indices = [1, 2, 3]
-            else: # 4 items
-                cols = st.columns(4)
-                active_col_indices = [0, 1, 2, 3]
+            # Tentukan kolom mana yang dipakai untuk render (Skip spacer cols)
+            if count == 1: render_cols = [cols[1]]
+            elif count == 2: render_cols = [cols[1], cols[2]]
+            elif count == 3: render_cols = [cols[1], cols[2], cols[3]]
+            else: render_cols = cols
 
-            # Loop Render per Saham di Row ini
             for i, ticker in enumerate(chunk):
-                with cols[active_col_indices[i]]:
+                with render_cols[i]:
                     try:
                         # Extract Data
-                        dfw = wl_data[ticker].dropna() if len(wl_sel) > 1 else wl_data.dropna()
+                        if len(wl_sel) == 1: dfw = wl_data
+                        else: dfw = wl_data[ticker] if ticker in wl_data.columns.levels[0] else pd.DataFrame()
+                        
+                        dfw = dfw.dropna()
                         if dfw.empty: continue
                         
                         dfw['Pct'] = dfw['Close'].pct_change() * 100
-                        # Ambil 20 hari terakhir
-                        last_df = dfw.tail(20)
-                        
-                        # Siapkan List Data
-                        vals = last_df['Pct'].tolist()
-                        dates = last_df.index.strftime('%d %b').tolist()
-                        
-                        # Padding jika data < 20
-                        if len(vals) < 20:
-                            vals = [0] * (20 - len(vals)) + vals
-                            dates = ["-"] * (20 - len(dates)) + dates
-                        
-                        st.markdown(f"<div style='text-align:center; font-weight:bold; margin-bottom:5px;'>{ticker}</div>", unsafe_allow_html=True)
+                        last_df = dfw.tail(20) # Ambil 20 hari terakhir
                         
                         # Generate HTML Grid
-                        html = '<div class="wl-grid">'
-                        for val, date_str in zip(vals, dates):
-                            color = "#00C805" if val > 0 else "#FF333A" if val < 0 else "#DDDDDD"
-                            # Tooltip: Date + Value
-                            tooltip = f"{date_str}: {val:.2f}%"
-                            # Text inside box: Round number
-                            text_val = f"{val:.1f}" if abs(val) >= 1 else "" 
+                        boxes_html = ""
+                        for date, row in last_df.iterrows():
+                            val = row['Pct']
+                            date_str = date.strftime('%d %b')
+                            color = "#00C805" if val > 0 else "#FF333A" if val < 0 else "#888"
                             
-                            html += f'''
-                            <div class="wl-box" title="{tooltip}">
-                                <div class="wl-content" style="background-color: {color};">
-                                    {text_val}
-                                </div>
+                            boxes_html += f'''
+                            <div class="wl-box" style="background-color: {color};" title="{date_str}: {val:.2f}%">
+                                {val:.1f}
                             </div>
                             '''
-                        html += '</div>'
-                        st.markdown(html, unsafe_allow_html=True)
                         
-                    except Exception as e:
-                        st.error(f"Err {ticker}")
-            
-            st.write("") # Spacer antar row
-            st.write("") 
+                        # Pastikan Grid HTML Tertutup
+                        full_html = f'''
+                        <div class="wl-container">
+                            <div class="wl-title">{ticker}</div>
+                            <div class="wl-grid">
+                                {boxes_html}
+                            </div>
+                        </div>
+                        '''
+                        st.markdown(full_html, unsafe_allow_html=True)
+                        
+                    except Exception as e: st.error(f"Err {ticker}")
+            st.write("") # Spacer Row
 
 # ==========================
 # TAB 5: SIMULATOR
 # ==========================
 with tabs[4]:
-    st.header("🎯 Simple Paper Trading")
-    
-    col_sim1, col_sim2 = st.columns([1, 2])
-    
-    with col_sim1:
-        st.metric("Sisa Saldo (IDR)", format_rupiah(st.session_state.sim_balance))
-        
-        with st.form("order_form"):
-            st.subheader("Buat Transaksi")
-            sim_ticker = st.selectbox("Saham", LIST_SAHAM_IHSG)
-            sim_action = st.radio("Aksi", ["BUY", "SELL"], horizontal=True)
-            sim_qty = st.number_input("Jumlah Lot (1 Lot = 100 Lembar)", min_value=1, value=1)
-            
-            if st.form_submit_button("Submit Order"):
-                stock_info = yf.Ticker(sim_ticker).history(period="1d")
-                if not stock_info.empty:
-                    sim_price = stock_info['Close'].iloc[-1]
-                    total_val = sim_price * sim_qty * 100
-                    
-                    if sim_action == "BUY":
-                        if st.session_state.sim_balance >= total_val:
-                            st.session_state.sim_balance -= total_val
-                            st.session_state.sim_portfolio[sim_ticker] = st.session_state.sim_portfolio.get(sim_ticker, 0) + sim_qty
-                            st.session_state.sim_history.append({"Date": datetime.now(), "Ticker": sim_ticker, "Action": "BUY", "Price": sim_price, "Qty": sim_qty})
-                            st.success(f"BUY {sim_ticker} Sukses!")
-                            st.rerun()
-                        else: st.error("Saldo tidak cukup!")
-                    elif sim_action == "SELL":
-                        curr_qty = st.session_state.sim_portfolio.get(sim_ticker, 0)
-                        if curr_qty >= sim_qty:
-                            st.session_state.sim_balance += total_val
-                            st.session_state.sim_portfolio[sim_ticker] -= sim_qty
-                            if st.session_state.sim_portfolio[sim_ticker] == 0: del st.session_state.sim_portfolio[sim_ticker]
-                            st.session_state.sim_history.append({"Date": datetime.now(), "Ticker": sim_ticker, "Action": "SELL", "Price": sim_price, "Qty": sim_qty})
-                            st.success(f"SELL {sim_ticker} Sukses!")
-                            st.rerun()
-                        else: st.error("Barang tidak cukup!")
-                else: st.error("Gagal mengambil harga.")
+    st.header("🎯 Paper Trading")
+    c_s1, c_s2 = st.columns([1, 2])
+    with c_s1:
+        st.metric("Saldo", format_rupiah(st.session_state.sim_balance))
+        with st.form("sim_form"):
+            s_tick = st.selectbox("Saham", LIST_SAHAM_IHSG)
+            s_act = st.radio("Aksi", ["BUY", "SELL"], horizontal=True)
+            s_qty = st.number_input("Lot", 1)
+            if st.form_submit_button("Submit"):
+                curr = yf.Ticker(s_tick).history('1d')['Close'].iloc[-1]
+                val = curr * s_qty * 100
+                if s_act == "BUY":
+                    if st.session_state.sim_balance >= val:
+                        st.session_state.sim_balance -= val
+                        st.session_state.sim_portfolio[s_tick] = st.session_state.sim_portfolio.get(s_tick, 0) + s_qty
+                        st.success("BUY Sukses")
+                        st.rerun()
+                    else: st.error("Saldo Kurang")
+                else:
+                    if st.session_state.sim_portfolio.get(s_tick, 0) >= s_qty:
+                        st.session_state.sim_balance += val
+                        st.session_state.sim_portfolio[s_tick] -= s_qty
+                        if st.session_state.sim_portfolio[s_tick] == 0: del st.session_state.sim_portfolio[s_tick]
+                        st.success("SELL Sukses")
+                        st.rerun()
+                    else: st.error("Barang Kurang")
 
-    with col_sim2:
-        st.subheader("Portofolio Saat Ini")
+    with c_s2:
         if st.session_state.sim_portfolio:
-            port_rows = []
-            port_tickers = list(st.session_state.sim_portfolio.keys())
-            curr_data = get_data_bulk(port_tickers, period="1d")
-            
-            total_asset = 0
-            for t, qty in st.session_state.sim_portfolio.items():
+            p_data = []
+            cur_prices = get_data_bulk(list(st.session_state.sim_portfolio.keys()), period="1d")
+            total_assets = 0
+            for t, q in st.session_state.sim_portfolio.items():
                 try:
-                    dft = curr_data[t] if len(port_tickers) > 1 else curr_data
-                    curr_p = dft['Close'].iloc[-1]
-                    val = curr_p * qty * 100
-                    total_asset += val
-                    port_rows.append({"Ticker": t, "Lot": qty, "Last Price": format_rupiah(curr_p), "Value (IDR)": format_rupiah(val)})
+                    # Handle single/multi again
+                    if len(st.session_state.sim_portfolio) == 1: cp = cur_prices['Close'].iloc[-1]
+                    else: cp = cur_prices[t]['Close'].iloc[-1]
+                    
+                    v = cp * q * 100
+                    total_assets += v
+                    p_data.append({"Ticker": t, "Lot": q, "Val": format_rupiah(v)})
                 except: pass
-            
-            st.dataframe(pd.DataFrame(port_rows), use_container_width=True)
-            st.metric("Total Aset Saham", format_rupiah(total_asset))
-            st.metric("Total Equity", format_rupiah(st.session_state.sim_balance + total_asset))
-        else: st.info("Portofolio Kosong.")
-        
-        if st.session_state.sim_history:
-            st.divider()
-            st.subheader("Riwayat Transaksi")
-            st.dataframe(pd.DataFrame(st.session_state.sim_history), use_container_width=True)
+            st.dataframe(p_data, use_container_width=True)
+            st.metric("Total Aset", format_rupiah(total_assets))
 
-st.caption(f"Last Update: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.caption(f"Update: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
