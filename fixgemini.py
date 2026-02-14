@@ -20,22 +20,25 @@ st.markdown("""
     .wl-date { font-size: 11px; opacity: 0.9; margin-bottom: 4px; }
     .wl-price { font-size: 14px; font-weight: bold; margin-bottom: 2px; }
     .wl-pct { font-size: 12px; font-weight: bold; }
-    /* Hide Index Column in tables for cleaner look */
+    /* Sembunyikan indeks tabel agar rapi */
     thead tr th:first-child {display:none}
     tbody th {display:none}
+    /* Mempercantik tombol */
+    div.stButton > button {width: 100%;}
 </style>
 """, unsafe_allow_html=True)
 
 # --- 3. DATA LIST SAHAM ---
-# List Saham Lengkap (Tanpa .JK, nanti otomatis ditambah)
 RAW_TICKERS = [
     "BREN", "BBCA", "DSSA", "BBRI", "TPIA", "DCII", "BYAN", "AMMN", "BMRI", "TLKM", "ASII", "MORA", "SRAJ", "CUAN", "BRPT", "BBNI", "PANI", "BNLI", "BRMS", "CDIA", "DNET", "IMPC", "FILM", "MPRO", "BRIS", "ICBP", "HMSP", "BUMI", "EMAS", "UNTR", "ANTM", "NCKL", "SMMA", "ADMR", "CASA", "UNVR", "RISE", "CPIN", "MLPT", "AMRT", "MDKA", "ISAT", "MBMA", "GOTO", "INCO", "AADI", "INDF", "PTRO", "BELI", "ADRO", "EXCL", "TCPI", "KLBF", "EMTK", "MYOR", "PGAS", "INKP", "PGUN", "PGEO", "GEMS", "MTEL", "BNGA", "CMRY", "ARCI", "TBIG", "MEGA", "SILO", "MEDC", "GIAA", "SOHO", "VKTR", "CBDK", "MIKA", "NISP", "JPFA", "GGRM", "TOWR", "BBHI", "ENRG", "TAPG", "SUPA", "BUVA", "PTBA", "BINA", "COIN", "AVIA", "JSMR", "AKRA", "NSSS", "PNBN", "ITMG", "BDMN", "ARKO", "MDIY", "TINS", "BSIM", "INTP", "JARR", "BKSL", "BTPN", "ARTO", "FAPA", "MKPI", "RMKE", "SRTG", "TKIM", "MAPA", "MSIN", "MAPI", "RLCO", "HEAL", "BSDE", "KPIG", "CITA", "PWON", "BNBR", "APIC", "BBTN", "SMGR", "RAJA", "POLU", "LIFE", "BNII", "INDY", "CTRA", "SMAR", "SCMA", "SSMS", "CARE", "ULTJ", "SIDO", "DSNG", "BBSI", "BUKA", "AALI", "RATU", "BBKP", "HRUM", "CMNT", "SGRO", "PSAB", "JRPT", "YUPI", "STAA", "STTP", "GOOD", "MCOL", "WIFI", "AUTO", "TSPC", "NICL", "ALII", "SHIP", "MLBI", "PACK", "DEWA", "CYBR", "PRAY", "POWR", "ESSA", "BMAS", "MIDI", "EDGE", "BIPI", "BSSR", "SMSM", "ADMF", "ELPI", "BFIN", "HRTA", "CLEO", "BTPS", "CMNP", "CNMA", "BANK", "ADES", "INPP", "BJBR", "SIMP", "BJTM", "PNLF", "INET", "SINI", "TLDN", "GMFI", "NATO", "BBMD", "LSIP", "TMAS", "ABMM", "DUTI", "BHAT", "DAAZ", "SGER", "DMND", "CLAY", "IBST", "MTDL", "BULL", "ACES", "LPKR", "DMAS", "SMRA", "SSIA", "ERAA", "EPMT", "SMDR", "KRAS", "JSPT", "BOGA", "MAYA", "AGII", "OMED", "PALM", "ANJT", "TOBA", "DATA", "BESS", "INDS", "CASS", "ELSA", "AGRO", "SAME", "UANG", "MNCN", "LINK", "BPII", "YULE", "TRIN", "BALI", "UDNG", "PBSA", "CTBN", "DRMA", "NIRO", "DKFT", "GTSI", "MTLA", "BBYB", "TFCO", "ROTI", "FISH", "TRIM", "PYFA", "TGKA", "GOLF", "KIJA", "JTPE", "MASB", "HUMI", "FORE", "MPMX", "RDTX", "MSTI", "BSWD", "IMAS", "BIRD", "LPCK", "ASSA", "TUGU", "BWPT", "WIIM", "RONY", "LPPF", "CENT", "SDRA", "SURE", "VICI", "MGLV", "NOBU", "KEEN", "PSGO", "AMAR", "CPRO", "CBRE", "SOCI", "ARNA", "TBLA", "STAR", "GJTL", "VICO", "PBID", "INPC", "GGRP", "IRSX", "AGRS", "HEXA", "TOTL", "UNIC", "SMMT", "BUKK", "ROCK", "SKRN", "MDLA", "MMLP", "MINA", "BACA", "MAPB", "KEJU", "BGTG", "SOTS", "MBSS", "SAMF", "BHIT", "ARGO", "CBUT", "PNIN", "MARK", "SMDM", "ISSP", "FPNI", "APLN", "MYOH", "ASRI", "SMIL", "DAYA", "KAEF", "IFSH", "BNBA", "RALS", "JAWA", "MCOR", "PKPK", "HATM", "TOTO", "BCIC", "IATA", "MAHA", "FOLK", "SMBR", "SFAN", "BISI", "BABP", "FUTR", "PSKT", "OASA", "ASLI", "SSTM", "SIPD", "MGRO", "PORT", "DNAR", "MKAP", "BVIC", "BOLT", "PNGO", "IPCC", "BLTZ", "ASGR", "POLI", "DWGL", "BMTR", "GMTD", "WINS", "IFII", "MSJA", "BCAP", "OMRE", "BEEF", "KMTR", "NICE", "BKSW", "PRDA", "DOID", "TRUE", "BLUE", "MDIA", "WOOD", "ACST", "IMJS", "AMAG", "PTPP", "MTMH", "CSRA", "MLIA", "ITMA", "DGWG", "KETR", "NRCA", "DMMX", "SCCO", "INDR", "PNBS", "BRAM", "LUCY", "MBAP", "TPMA", "ELTY", "IPTV", "STRK", "TEBE", "ADHI", "LPGI", "SUNI", "HILL", "PSSI", "MINE", "FAST", "DVLA", "ERAL", "HERO", "KINO", "CSAP", "UCID", "IPCM", "MLPL", "VISI", "PTSN", "BBRM", "SPTO", "FMII", "PPRE", "MAIN", "AYAM", "EURO", "SKLT", "DEPO", "BSBK", "MKTR", "BMHS", "NEST", "PMJS", "BEKS", "KKGI", "DLTA", "AMFG", "RAAM", "TRGU", "ALDO", "GWSA", "PSAT", "GSMF", "CARS", "PADI", "BBLD", "DOOH", "ABDA", "BELL", "NETV", "MERK", "BLOG", "DILD", "TAMU", "CEKA", "ATIC", "TRST", "SONA", "BBSS", "KBLI", "BLES", "CFIN", "JKON", "TIFA", "CAMP", "RANC", "MITI", "TCID", "WSBP", "GZCO", "AISA", "CITY", "JIHD", "LTLS", "IBOS", "ADCP", "ARTA", "BUAH", "INDO", "WOMF", "BEST", "PANS", "TBMS", "ENAK", "RSCH", "BLTA", "JGLE", "MTWI", "ARII", "BTEK", "AREA", "BOLA", "SHID", "ZINC", "ASLC", "PEVE", "LIVE", "MMIX", "GHON", "CHIP", "WIRG", "GDST", "PBRX", "GRIA", "ATAP", "CMPP", "NELY", "RMKO", "NICK", "SMGA", "SPMA", "RELI", "HGII", "BUDI", "SKBM", "COCO", "LEAD", "VOKS", "PDPP", "MHKI", "NFCX", "PTPW", "PJAA", "ZATA", "NIKL", "FUJI", "AMOR", "PANR", "ADMG", "MGNA", "TALF", "AMAN", "BABY", "MTFN", "WTON", "IPOL", "SULI", "PMUI", "KSIX", "PADA", "LFLO", "BPFI", "JECC", "FORU", "HDFA", "KOKA", "BDKR", "DGIK", "WMUU", "PGJO", "RODA", "KDSI", "AXIO", "TIRA", "MDLN", "MOLI", "BEER", "HOKI", "BRNA", "GTBO", "BIKE", "UNIQ", "MPPA", "APEX", "AHAP", "GTRA", "SWID", "IKBI", "HOMI", "HOPE", "EKAD", "VIVA", "UNSP", "PEGE", "PZZA", "SOFA", "IRRA", "ELIT", "WEGE", "SOSS", "AWAN", "SMKL", "GLVA", "TRIS", "KOTA", "GUNA", "HAIS", "UNTD", "CHEK", "LABS", "BOAT", "PNSE", "MREI", "FITT", "KONI", "VTNY", "URBN", "TRON", "IDPR", "WINE", "DART", "PJHB", "GPRA", "MDKI", "KING", "CNKO", "UFOE", "BSML", "VERN", "HALO", "COAL", "APLI", "CRAB", "ESTA", "SURI", "MDRN", "MAXI", "KMDS", "CLPI", "BAYU", "VRNA", "TIRT", "IGAR", "LAPD", "IKPM", "SCNP", "MCAS", "REAL", "RIGS", "CCSI", "GDYR", "GULA", "NASA", "PDES", "CSIS", "GOLD", "PTPS", "CBPE", "SOLA", "TYRE", "ZONE", "BIPP", "BKDP", "ESTI", "IOTF", "LPLI", "VAST", "HYGN", "ASRM", "KREN", "SMLE", "DYAN", "DGNS", "EAST", "HAJJ", "TFAS", "SRSN", "JATI", "KBLM", "DADA", "BMSR", "KOBX", "NAIK", "KBAG", "TARA", "SATU", "ASPR", "ASHA", "YOII", "UVCR", "CRSN", "YPAS", "TRUS", "ATLA", "INTA", "ERTX", "GPSO", "PART", "MUTU", "SAFE", "KLAS", "AKPI", "ITIC", "CGAS", "EMDE", "MICE", "VINS", "ASMI", "HRME", "BPTR", "AMIN", "ASPI", "IKAI", "BINO", "SAGE", "TOSK", "BTON", "OKAS", "MPXL", "WGSH", "ACRO", "AGAR", "INOV", "POLA", "LMPI", "FIRE", "ANDI", "PUDP", "DOSS", "FWCT", "AKSI", "CASH", "KBLV", "PRIM", "NTBK", "DEWI", "OBAT", "ASJT", "ALKA", "ECII", "RELF", "LCKM", "PEHA", "AKKU", "ENZO", "AYLS", "INPS", "BAJA", "WINR", "ASDM", "SDPC", "TRJA", "SAPX", "WAPO", "PTMP", "BAUT", "MEJA", "JMAS", "LPPS", "OBMD", "NPGF", "NZIA", "MANG", "LION", "TAXI", "PTSP", "APII", "CAKK", "NANO", "SLIS", "DFAM", "WOWS", "SDMU", "CINT", "ZYRX", "DKHH", "MRAT", "ABBA", "BOBA", "DIVA", "PURA", "MARI", "PAMG", "BAPI", "CANI", "KOPI", "DSFI", "SMKM", "WEHA", "PURI", "LPIN", "IBFN", "RUIS", "NAYZ", "LAJU", "TRUK", "LAND", "KARW", "HELI", "CHEM", "SEMA", "PSDN", "IPAC", "SNLK", "INTD", "MSKY", "MBTO", "KRYA", "ASBI", "INCI", "TMPO", "GEMA", "ISAP", "YELO", "MERI", "PTIS", "ISEA", "FOOD", "LABA", "MPIX", "RGAS", "DEFI", "KUAS", "SBMA", "EPAC", "RCCC", "KIOS", "INAI", "RBMS", "MIRA", "NASI", "MEDS", "CSMI", "CTTH", "OLIV", "JAST", "IDEA", "OPMS", "PTDU", "PGLI", "FLMC", "BCIP", "INCF", "HDIT", "JAYA", "AIMS", "RUNS", "POLY", "OILS", "BATA", "KOIN", "ICON", "LRNA", "MPOW", "PICO", "IKAN", "TAYS", "ESIP", "KJEN", "LUCK", "TNCA", "KICI", "SOUL", "ARKA", "PLAN", "BMBL", "BAPA", "RICY", "WIDI", "DIGI", "INDX", "HADE", "TAMA", "PCAR", "LOPI", "GRPH", "HBAT", "PIPA", "KLIN", "PPRI", "AEGS", "SPRE", "KAQI", "NINE", "KOCI", "LMAX", "BRRC", "RAFI", "TOOL", "BATR", "AMMS", "KKES", "SICO", "BAIK", "GRPM", "KDTN", "MSIE"
 ]
-# Tambahkan .JK otomatis
 LIST_SAHAM_IHSG = [f"{t}.JK" for t in RAW_TICKERS]
 
-# --- 4. STATE MANAGEMENT ---
+# --- 4. STATE MANAGEMENT (PERSISTENCE) ---
+# Inisialisasi Session State agar data tidak hilang saat pindah tab
 if 'page' not in st.session_state: st.session_state.page = 1
+if 'recap_data' not in st.session_state: st.session_state.recap_data = None
+if 'date_check_data' not in st.session_state: st.session_state.date_check_data = None
 
 # --- 5. FUNGSI DATA ---
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -49,7 +52,6 @@ def get_fundamental(ticker):
 def get_data(tickers, period="3mo", interval="1d", start=None, end=None):
     if not tickers: return pd.DataFrame()
     try:
-        # Download dengan Threads agar cepat
         if start and end:
             d = yf.download(tickers, start=start, end=end, interval=interval, group_by='ticker', progress=False, auto_adjust=True, threads=True)
         else:
@@ -60,27 +62,18 @@ def get_data(tickers, period="3mo", interval="1d", start=None, end=None):
         gc.collect()
 
 def fetch_data_chunked(ticker_list, period="2y", chunk_size=50):
-    """Fungsi helper untuk download data dalam potongan agar tidak error"""
     full_data = pd.DataFrame()
-    # Progress Bar
     prog_bar = st.progress(0)
     status_text = st.empty()
     
-    total_chunks = len(ticker_list) // chunk_size + 1
-    
     for i in range(0, len(ticker_list), chunk_size):
         chunk = ticker_list[i:i+chunk_size]
-        status_text.text(f"Mengunduh data {i} dari {len(ticker_list)} saham...")
+        status_text.text(f"Mengunduh batch {i} - {i+chunk_size}...")
         try:
             temp_data = get_data(chunk, period=period)
             if not temp_data.empty:
-                # Merge logic is tricky with multi-index, easiest is to append columns if structure matches
-                # But get_data returns wide format.
-                if full_data.empty:
-                    full_data = temp_data
-                else:
-                    # Join columns
-                    full_data = pd.concat([full_data, temp_data], axis=1)
+                if full_data.empty: full_data = temp_data
+                else: full_data = pd.concat([full_data, temp_data], axis=1)
         except: pass
         prog_bar.progress(min((i + chunk_size) / len(ticker_list), 1.0))
         gc.collect()
@@ -160,8 +153,7 @@ with tabs[0]:
                 if len(batch) > 1:
                     if t not in df_b.columns.levels[0]: continue
                     dft = df_b[t].dropna()
-                else:
-                    dft = df_b.dropna()
+                else: dft = df_b.dropna()
                 
                 if dft.empty: continue
                 if not (min_p <= dft['Close'].iloc[-1] <= max_p): continue
@@ -187,86 +179,96 @@ with tabs[1]:
             except: pass
         gc.collect()
 
-# === TAB 3: RECAP (FULL ALL STOCKS) ===
+# === TAB 3: RECAP (PERSISTENT) ===
 with tabs[2]:
     st.markdown("### 📊 Rekapitulasi Pasar")
     
-    # Text Input Search (Bukan List Dropdown)
-    search_query = st.text_input("🔍 Filter Saham (Ketik Kode, contoh: BBCA):", value="")
+    # Text Filter
+    search_query = st.text_input("🔍 Filter Tabel (Contoh: BBCA):", value="")
     
-    if st.button("Muat Semua Data (Ini mungkin memakan waktu)"):
-        # Download semua data (Chunking agar tidak crash)
-        # Kita pakai 200 saham pertama dulu sebagai default agar tidak terlalu lama, 
-        # atau user bisa uncomment baris bawah untuk semua.
-        # target_tickers = LIST_SAHAM_IHSG # UNTUK SEMUA (LAMA)
-        target_tickers = LIST_SAHAM_IHSG # Kita coba semua dengan chunking
-        
-        with st.spinner("Mengunduh & Menganalisa Data Pasar..."):
-            d_r = fetch_data_chunked(target_tickers, period="2y", chunk_size=50)
-            
-            rows = []
-            now = datetime.now().date()
-            start_w = now - timedelta(days=now.weekday())
-            
-            for t in target_tickers:
-                try:
-                    if t not in d_r.columns.levels[0]: continue
-                    dt = d_r[t].dropna()
-                    if dt.empty: continue
-                    
-                    curr = dt['Close'].iloc[-1]
-                    
-                    def get_ret(days):
-                        if len(dt) < 5: return 0.0
-                        if days == 365: offset = 250
-                        elif days == 180: offset = 125
-                        elif days == 30: offset = 20
-                        else: offset = 1
-                        if len(dt) > offset:
-                            return ((curr - dt['Close'].iloc[-offset])/dt['Close'].iloc[-offset])*100
-                        return 0.0
-                    
-                    row = {"Ticker": t, "Harga": fmt_idr(curr), "Vol": fmt_idr(dt['Volume'].iloc[-1])}
-                    
-                    acc = 0
-                    for i, d in enumerate(["Senin", "Selasa", "Rabu", "Kamis", "Jumat"]):
-                        t_date = pd.Timestamp(start_w + timedelta(days=i))
-                        val = 0.0
-                        if t_date in dt.index:
-                            loc = dt.index.get_loc(t_date)
-                            if loc > 0: val = ((dt['Close'].iloc[loc] - dt['Close'].iloc[loc-1])/dt['Close'].iloc[loc-1])*100
-                        row[d] = val
-                        acc += val
-                    
-                    row["Weekly%"] = acc
-                    row["1M%"] = get_ret(30)
-                    row["6M%"] = get_ret(180)
-                    row["1Y%"] = get_ret(365)
-                    rows.append(row)
-                except: continue
+    col_r1, col_r2 = st.columns(2)
+    with col_r1:
+        # Load Button
+        if st.button("Muat Data Baru (Update)"):
+            target_tickers = LIST_SAHAM_IHSG
+            with st.spinner("Mengunduh Data..."):
+                d_r = fetch_data_chunked(target_tickers, period="2y", chunk_size=50)
                 
-            if rows:
-                df_res = pd.DataFrame(rows)
+                rows = []
+                now = datetime.now().date()
+                start_w = now - timedelta(days=now.weekday())
                 
-                # FILTER SEARCH (Jika ada input)
-                if search_query:
-                    df_res = df_res[df_res['Ticker'].str.contains(search_query.upper())]
+                for t in target_tickers:
+                    try:
+                        if t not in d_r.columns.levels[0]: continue
+                        dt = d_r[t].dropna()
+                        if dt.empty: continue
+                        
+                        curr = dt['Close'].iloc[-1]
+                        
+                        def get_ret(days):
+                            if len(dt) < 5: return 0.0
+                            if days == 365: offset = 250
+                            elif days == 180: offset = 125
+                            elif days == 30: offset = 20
+                            else: offset = 1
+                            if len(dt) > offset:
+                                return ((curr - dt['Close'].iloc[-offset])/dt['Close'].iloc[-offset])*100
+                            return 0.0
+                        
+                        row = {"Ticker": t, "Harga": fmt_idr(curr), "Vol": fmt_idr(dt['Volume'].iloc[-1])}
+                        
+                        acc = 0
+                        for i, d in enumerate(["Senin", "Selasa", "Rabu", "Kamis", "Jumat"]):
+                            t_date = pd.Timestamp(start_w + timedelta(days=i))
+                            val = 0.0
+                            if t_date in dt.index:
+                                loc = dt.index.get_loc(t_date)
+                                if loc > 0: val = ((dt['Close'].iloc[loc] - dt['Close'].iloc[loc-1])/dt['Close'].iloc[loc-1])*100
+                            row[d] = val
+                            acc += val
+                        
+                        row["Weekly%"] = acc
+                        row["1M%"] = get_ret(30)
+                        row["6M%"] = get_ret(180)
+                        row["1Y%"] = get_ret(365)
+                        rows.append(row)
+                    except: continue
+                
+                # SIMPAN KE SESSION STATE
+                if rows:
+                    st.session_state.recap_data = pd.DataFrame(rows)
+                gc.collect()
 
-                def color_val(v): 
-                    if isinstance(v, (int, float)): return f'color: {"green" if v>0 else "red" if v<0 else ""}'
-                    return ""
-                
-                st.dataframe(
-                    df_res.style.applymap(color_val).format("{:.2f}", subset=["Weekly%", "1M%", "6M%", "1Y%", "Senin", "Selasa", "Rabu", "Kamis", "Jumat"]), 
-                    height=600, 
-                    use_container_width=True
-                )
-            gc.collect()
+    with col_r2:
+        if st.button("Hapus Data (Reset)"):
+            st.session_state.recap_data = None
+            st.rerun()
+
+    # TAMPILKAN DATA DARI SESSION STATE
+    if st.session_state.recap_data is not None:
+        df_show = st.session_state.recap_data
+        
+        # Apply Filter
+        if search_query:
+            df_show = df_show[df_show['Ticker'].str.contains(search_query.upper())]
+            
+        def color_val(v): 
+            if isinstance(v, (int, float)): return f'color: {"green" if v>0 else "red" if v<0 else ""}'
+            return ""
+        
+        st.dataframe(
+            df_show.style.applymap(color_val).format("{:.2f}", subset=["Weekly%", "1M%", "6M%", "1Y%", "Senin", "Selasa", "Rabu", "Kamis", "Jumat"]), 
+            height=600, 
+            use_container_width=True
+        )
+    else:
+        st.info("Data belum dimuat. Klik 'Muat Data Baru' untuk memulai.")
 
 # === TAB 4: WIN/LOSS ===
 with tabs[3]:
-    st.subheader("🎲 Win/Loss Heatmap (20 Hari)")
-    txt = st.text_input("Ketik Kode Saham (pisahkan koma):", value="BBCA, GOTO")
+    st.subheader("🎲 Win/Loss Heatmap")
+    txt = st.text_input("Ketik Kode Saham:", value="BBCA, GOTO")
     
     if txt:
         ticks = [x.strip().upper() for x in txt.split(",") if x.strip()]
@@ -308,84 +310,78 @@ with tabs[3]:
                 except: st.error(f"Gagal memuat {t}")
             gc.collect()
 
-# === TAB 5: CEK TANGGAL (PENGGANTI SIMULATOR) ===
+# === TAB 5: CEK TANGGAL (PERSISTENT) ===
 with tabs[4]:
     st.subheader("🗓️ Perbandingan Harga Berdasarkan Tanggal")
-    st.markdown("Pilih rentang tanggal untuk melihat perubahan harga semua saham.")
-
+    
     col_d1, col_d2 = st.columns(2)
     with col_d1:
         date_start = st.date_input("Tanggal Awal", value=datetime.now() - timedelta(days=30))
     with col_d2:
         date_end = st.date_input("Tanggal Akhir", value=datetime.now())
 
-    # Text Input Filter
-    filter_text = st.text_input("🔍 Filter Hasil (Opsional):", placeholder="Contoh: BANK, BBCA")
+    filter_text = st.text_input("🔍 Filter Hasil:", placeholder="Contoh: BANK, BBCA")
 
-    if st.button("Hitung Perubahan Harga"):
-        if date_start >= date_end:
-            st.error("Tanggal Awal harus lebih kecil dari Tanggal Akhir")
-        else:
-            with st.spinner("Mengambil data historis..."):
-                # Download data range khusus (Chunked agar aman)
-                # Kita perlu convert date object ke string yyyy-mm-dd
-                s_str = date_start.strftime("%Y-%m-%d")
-                e_str = (date_end + timedelta(days=1)).strftime("%Y-%m-%d") # +1 agar end date inclusive
-                
-                # Menggunakan fungsi get_data langsung dengan chunking manual disini jika perlu
-                # Untuk efisiensi, kita pakai fetch_data_chunked helper yang sudah dimodifikasi logicnya sedikit
-                # Tapi fetch_data_chunked pakai period. Kita buat manual loop disini.
-                
-                full_raw = pd.DataFrame()
-                chunk_size = 50
-                prog = st.progress(0)
-                
-                res_data = []
-                
-                for i in range(0, len(LIST_SAHAM_IHSG), chunk_size):
-                    chunk = LIST_SAHAM_IHSG[i:i+chunk_size]
-                    try:
-                        d_batch = yf.download(chunk, start=s_str, end=e_str, group_by='ticker', progress=False, auto_adjust=True, threads=True)
-                        
-                        for t in chunk:
-                            if t not in d_batch.columns.levels[0]: continue
-                            df_t = d_batch[t].dropna()
-                            if df_t.empty: continue
-                            
-                            # Cari harga terdekat dengan start dan end
-                            # Karena hari libur, mungkin tanggal persis tidak ada.
-                            # Kita ambil head(1) dan tail(1) dalam rentang yang didownload
-                            
-                            p_start = df_t['Close'].iloc[0]
-                            p_end = df_t['Close'].iloc[-1]
-                            change = ((p_end - p_start) / p_start) * 100
-                            
-                            res_data.append({
-                                "Ticker": t,
-                                "Harga Awal": fmt_idr(p_start),
-                                "Harga Akhir": fmt_idr(p_end),
-                                "Perubahan (%)": change
-                            })
-                    except: pass
-                    prog.progress(min((i + chunk_size) / len(LIST_SAHAM_IHSG), 1.0))
-                
-                prog.empty()
-                
-                if res_data:
-                    df_res = pd.DataFrame(res_data)
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("Hitung Perubahan"):
+            if date_start >= date_end:
+                st.error("Tanggal error")
+            else:
+                with st.spinner("Mengambil data..."):
+                    s_str = date_start.strftime("%Y-%m-%d")
+                    e_str = (date_end + timedelta(days=1)).strftime("%Y-%m-%d")
                     
-                    # Apply Filter Text
-                    if filter_text:
-                        df_res = df_res[df_res['Ticker'].str.contains(filter_text.upper())]
+                    chunk_size = 50
+                    prog = st.progress(0)
+                    res_data = []
                     
-                    # Styling
-                    def color_change(v):
-                        return f'color: {"green" if v > 0 else "red" if v < 0 else "black"}'
+                    for i in range(0, len(LIST_SAHAM_IHSG), chunk_size):
+                        chunk = LIST_SAHAM_IHSG[i:i+chunk_size]
+                        try:
+                            d_batch = yf.download(chunk, start=s_str, end=e_str, group_by='ticker', progress=False, auto_adjust=True, threads=True)
+                            for t in chunk:
+                                if t not in d_batch.columns.levels[0]: continue
+                                df_t = d_batch[t].dropna()
+                                if df_t.empty: continue
+                                
+                                p_start = df_t['Close'].iloc[0]
+                                p_end = df_t['Close'].iloc[-1]
+                                change = ((p_end - p_start) / p_start) * 100
+                                
+                                res_data.append({
+                                    "Ticker": t,
+                                    "Harga Awal": fmt_idr(p_start),
+                                    "Harga Akhir": fmt_idr(p_end),
+                                    "Perubahan (%)": change
+                                })
+                        except: pass
+                        prog.progress(min((i + chunk_size) / len(LIST_SAHAM_IHSG), 1.0))
                     
-                    st.dataframe(
-                        df_res.style.applymap(color_change, subset=["Perubahan (%)"]).format("{:.2f}", subset=["Perubahan (%)"]),
-                        use_container_width=True,
-                        height=600
-                    )
-                else:
-                    st.warning("Data tidak ditemukan untuk rentang tanggal tersebut.")
+                    prog.empty()
+                    if res_data:
+                        st.session_state.date_check_data = pd.DataFrame(res_data)
+                    gc.collect()
+
+    with col_btn2:
+        if st.button("Reset Tabel"):
+            st.session_state.date_check_data = None
+            st.rerun()
+
+    # TAMPILKAN DATA DARI SESSION STATE
+    if st.session_state.date_check_data is not None:
+        df_res = st.session_state.date_check_data
+        
+        if filter_text:
+            df_res = df_res[df_res['Ticker'].str.contains(filter_text.upper())]
+        
+        def color_change(v):
+            return f'color: {"green" if v > 0 else "red" if v < 0 else "black"}'
+        
+        st.dataframe(
+            df_res.style.applymap(color_change, subset=["Perubahan (%)"]).format("{:.2f}", subset=["Perubahan (%)"]),
+            use_container_width=True,
+            height=600
+        )
+    else:
+        st.info("Silakan pilih tanggal dan klik 'Hitung Perubahan'")
