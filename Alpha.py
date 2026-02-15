@@ -1,44 +1,70 @@
+import streamlit as st
 import yfinance as yf
 import pandas as pd
 
-saham_list = ['GOTO.JK', 'ANTM.JK', 'ADRO.JK', 'BRPT.JK', 'MEDC.JK', 'BBRI.JK', 'TLKM.JK', 'ASII.JK']
-threshold_persen = 3.0
+st.set_page_config(page_title="Day Trading Scanner", layout="wide")
 
-def generate_sorted_dashboard(tickers, threshold):
+st.title("📈 Day Trading Volatility Scanner")
+st.write("Menganalisa rentang High-Low harian untuk mencari saham yang 'licin'.")
+
+# Sidebar untuk Input
+with st.sidebar:
+    st.header("Konfigurasi")
+    input_saham = st.text_area("Masukkan Kode Saham (pisahkan dengan koma):", 
+                                "GOTO.JK, ANTM.JK, ADRO.JK, BRPT.JK, MEDC.JK, BBRI.JK, TLKM.JK, ASII.JK")
+    threshold = st.slider("Ambang Batas Volatilitas (%)", 1.0, 10.0, 3.0)
+    tombol_proses = st.button("Scan Saham")
+
+# Fungsi untuk memproses data
+def get_data(tickers_str, threshold):
+    tickers = [t.strip() for t in tickers_str.split(",")]
     final_data = []
     
     for ticker in tickers:
-        data = yf.download(ticker, period="10d", interval="1d", progress=False)
-        if len(data) < 5: continue
+        try:
+            data = yf.download(ticker, period="10d", interval="1d", progress=False)
+            if len(data) < 5: continue
+                
+            last_5 = data.tail(5).copy()
+            # Hitung Rentang High-Low
+            last_5['HL_Pct'] = (last_5['High'] - last_5['Low']) / last_5['Low'] * 100
             
-        last_5 = data.tail(5).copy()
-        last_5['HL_Pct'] = (last_5['High'] - last_5['Low']) / last_5['Low'] * 100
-        
-        dates = last_5.index.strftime('%d/%m').tolist()
-        ranges = last_5['HL_Pct'].tolist()
-        vols = (last_5['Volume'] / 1_000_000).tolist()
-        count_met = (last_5['HL_Pct'] >= threshold).sum()
-        
-        row = {'Ticker': ticker}
-        for i in range(5):
-            # Simpan angka murni (float) dulu agar bisa diurutkan
-            row[dates[i]] = round(ranges[i], 2)
-            # Opsional: Jika ingin tetap ada info Volume, kita buat kolom terpisah atau simpan di list
+            dates = last_5.index.strftime('%d/%m').tolist()
+            ranges = last_5['HL_Pct'].tolist()
+            count_met = (last_5['HL_Pct'] >= threshold).sum()
             
-        row['Freq'] = count_met
-        final_data.append(row)
+            row = {'Ticker': ticker}
+            for i in range(5):
+                row[dates[i]] = round(ranges[i], 2)
+            
+            row['Freq'] = count_met
+            final_data.append(row)
+        except:
+            continue
+            
+    return pd.DataFrame(final_data)
+
+# Logika Tampilan
+if tombol_proses:
+    df = get_data(input_saham, threshold)
+    
+    if not df.empty:
+        # Mengurutkan berdasarkan tanggal terbaru secara default
+        kolom_terbaru = df.columns[-2]
+        df = df.sort_values(by=kolom_terbaru, ascending=False)
         
-    df = pd.DataFrame(final_data)
-    
-    # MENGURUTKAN: Berdasarkan kolom tanggal terakhir (indeks -2 karena kolom terakhir adalah 'Freq')
-    kolom_terbaru = df.columns[-2] 
-    df_sorted = df.sort_values(by=kolom_terbaru, ascending=False)
-    
-    return df_sorted, kolom_terbaru
+        # Fungsi styling untuk memberi warna
+        def highlight_volatility(val):
+            if isinstance(val, (int, float)) and val >= threshold:
+                return 'background-color: #2ecc71; color: white'
+            return ''
 
-# Jalankan
-df_hasil, tgl_acuan = generate_sorted_dashboard(saham_list, threshold_persen)
-
-print(f"\n--- Dashboard Diurutkan Berdasarkan Tanggal Terupdate ({tgl_acuan}) ---")
-print(df_hasil.to_string(index=False))
+        # Tampilkan Tabel dengan Style
+        st.subheader(f"Hasil Analisa (Urutan Berdasarkan Tgl Terakhir: {kolom_terbaru})")
+        st.dataframe(df.style.applymap(highlight_volatility, subset=df.columns[1:-1]), 
+                     use_container_width=True, height=400)
+        
+        st.success(f"Tips: Fokus pada saham dengan 'Freq' tinggi dan sel berwarna hijau.")
+    else:
+        st.error("Data tidak ditemukan. Pastikan format ticker benar (contoh: ASII.JK).")
 
