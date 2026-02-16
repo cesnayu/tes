@@ -12,9 +12,6 @@ with st.sidebar:
     st.header("Konfigurasi")
     default_list = "GOTO.JK, ANTM.JK, ADRO.JK, BRPT.JK, MEDC.JK, BBRI.JK, TLKM.JK, ASII.JK"
     input_saham = st.text_area("List Saham:", value=default_list)
-    
-    st.markdown("---")
-    # Filter tambahan untuk mencari yang sedang 'mantul' (rebound)
     min_rebound = st.number_input("Minimal Rebound dari Low (%)", value=0.0, step=0.5)
     btn_refresh = st.button("🔄 Jalankan Scan")
 
@@ -25,68 +22,63 @@ def get_pro_data(tickers_str):
     p_bar = st.progress(0)
     for idx, ticker in enumerate(tickers):
         try:
-            # Tarik data intraday 1 menit (Batching 1 day)
-            data = yf.download(ticker, period="1d", interval="1m", progress=False)
+            # Menggunakan auto_adjust=True untuk menghindari MultiIndex yang membingungkan
+            data = yf.download(ticker, period="1d", interval="1m", progress=False, auto_adjust=True)
             
-            if not data.empty:
-                open_p = data['Open'].iloc[0]
-                curr_p = data['Close'].iloc[-1]
-                high_p = data['High'].max()
-                low_p = data['Low'].min()
+            if not data.empty and len(data) > 1:
+                # Memastikan kita mengambil nilai skalar tunggal
+                open_p = float(data['Open'].iloc[0])
+                curr_p = float(data['Close'].iloc[-1])
+                high_p = float(data['High'].max())
+                low_p = float(data['Low'].min())
                 
-                # Kalkulasi perbedaan 'Untung' vs 'Rugi' secara intraday
                 chg_from_open = ((curr_p - open_p) / open_p) * 100
-                rebound_from_low = ((curr_p - low_p) / low_p) * 100  # "Berapa persen naiknya dari bawah?"
-                drop_from_high = ((curr_p - high_p) / high_p) * 100 # "Berapa persen turunnya dari atas?"
+                rebound_from_low = ((curr_p - low_p) / low_p) * 100
+                drop_from_high = ((curr_p - high_p) / high_p) * 100
                 
                 results.append({
                     'Ticker': ticker,
                     'Current': round(curr_p, 2),
                     'Chg vs Open (%)': round(chg_from_open, 2),
-                    'Rebound from Low (%)': round(rebound_from_low, 2), # UNTUNG (Hijau)
-                    'Drop from High (%)': round(drop_from_high, 2),   # RUGI (Merah)
+                    'Rebound from Low (%)': round(rebound_from_low, 2),
+                    'Drop from High (%)': round(drop_from_high, 2),
                     'High Harian': round(high_p, 2),
                     'Low Harian': round(low_p, 2)
                 })
-        except:
+        except Exception as e:
+            # st.write(f"Debug: {ticker} error {e}") # Aktifkan jika ingin melihat error per saham
             continue
         p_bar.progress((idx + 1) / len(tickers))
     return pd.DataFrame(results)
 
 if btn_refresh:
-    df_pro = get_pro_data(input_saham)
+    df_raw = get_pro_data(input_saham)
     
-    if not df_pro.empty:
-        # Filter hanya yang punya rebound sesuai input user
-        df_filtered = df_pro[df_pro['Rebound from Low (%)'] >= min_rebound]
+    # Perbaikan: Cek apakah DataFrame kosong atau tidak
+    if not df_raw.empty:
+        # Memastikan tipe data kolom adalah float
+        df_raw['Rebound from Low (%)'] = pd.to_numeric(df_raw['Rebound from Low (%)'])
         
-        # Urutkan berdasarkan Rebound terbesar (Mencari saham yang paling kuat mantul)
-        df_display = df_filtered.sort_values(by='Rebound from Low (%)', ascending=False)
+        # Filter data
+        df_filtered = df_raw[df_raw['Rebound from Low (%)'] >= min_rebound].copy()
         
-        st.subheader("Analisa Pergerakan Harga (Intraday)")
-        
-        # Styling Tabel
-        def style_logic(val, col):
-            if col == 'Rebound from Low (%)':
-                return 'color: #2ecc71; font-weight: bold' # Hijau untuk Untung/Mantul
-            if col == 'Drop from High (%)':
-                return 'color: #e74c3c; font-weight: bold' # Merah untuk Rugi/Drop
-            if col == 'Chg vs Open (%)':
-                color = '#2ecc71' if val > 0 else '#e74c3c'
-                return f'color: {color}'
-            return ''
+        if not df_filtered.empty:
+            df_display = df_filtered.sort_values(by='Rebound from Low (%)', ascending=False)
+            
+            st.subheader("Analisa Pergerakan Harga (Intraday)")
+            
+            def style_logic(val, col):
+                if col == 'Rebound from Low (%)': return 'color: #2ecc71; font-weight: bold'
+                if col == 'Drop from High (%)': return 'color: #e74c3c; font-weight: bold'
+                if col == 'Chg vs Open (%)':
+                    return f"color: {'#2ecc71' if val > 0 else '#e74c3c'}"
+                return ''
 
-        # Tampilkan DataFrame dengan style per kolom
-        st.dataframe(
-            df_display.style.apply(lambda x: [style_logic(v, x.name) for v in x], axis=0),
-            use_container_width=True
-        )
-        
-        # Penjelasan Strategi
-        st.info("""
-        💡 **Cara Baca:**
-        - **Rebound from Low (%):** Jika angkanya besar, berarti saham ini sedang ditarik naik oleh pembeli setelah sempat jatuh. (Peluang Buy on Reversal).
-        - **Drop from High (%):** Jika angkanya mendekati 0%, berarti harga sekarang sedang di pucuk (Breakout). Jika angkanya besar (misal -3%), berarti ada aksi ambil untung (Profit Taking).
-        """)
+            st.dataframe(
+                df_display.style.apply(lambda x: [style_logic(v, x.name) for v in x], axis=0),
+                use_container_width=True
+            )
+        else:
+            st.info("Tidak ada saham yang memenuhi kriteria filter.")
     else:
-        st.info("Tidak ada data yang memenuhi kriteria.")
+        st.warning("Data tidak ditemukan. Pastikan market sudah buka.")
