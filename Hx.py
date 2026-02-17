@@ -3,15 +3,25 @@ import yfinance as yf
 import pandas as pd
 import time
 
-# --- 1. LOGIKA INTI (MODIFIKASI DARI KODE ANDA) ---
+# --- 1. DAFTAR SAHAM (Masukkan di sini) ---
+# Anda bisa menambah sampai 800 saham dengan format "KODE.JK"
+TICKERS_IDX = [
+    "BREN.JK", "BBCA.JK", "BBRI.JK", "TLKM.JK", "GOTO.JK", 
+    "AMMN.JK", "BRIS.JK", "ASII.JK", "UNVR.JK", "ADRO.JK",
+    "PTBA.JK", "ITMG.JK", "CPIN.JK", "ICBP.JK", "MDKA.JK"
+    # ... tambahkan terus ke bawah
+]
+
+# --- 2. LOGIKA SWING ---
 def calculate_current_swing(prices, threshold=0.02):
     if len(prices) < 2: return 0, "N/A", 0
     
     last_pivot = prices[0]
-    direction = 0 
+    direction = 0 # 0=mencari, 1=up, -1=down
     
     for p in prices:
         diff = (p - last_pivot) / last_pivot
+        
         if direction <= 0 and diff >= threshold:
             last_pivot = p
             direction = 1
@@ -23,30 +33,50 @@ def calculate_current_swing(prices, threshold=0.02):
             
     current_price = prices[-1]
     current_diff = (current_price - last_pivot) / last_pivot
-    status = "UP" if direction == 1 else "DOWN" if direction == -1 else "SIDE"
+    
+    if direction == 1: status = "UP TREND"
+    elif direction == -1: status = "DOWN TREND"
+    else: status = "WAITING"
+    
     return current_diff, status, last_pivot
 
-# --- 2. FUNGSI DOWNLOAD (ANTI RATE LIMIT) ---
-@st.cache_data(ttl=300) # Data disimpan selama 5 menit
-def scan_stocks(ticker_list, threshold):
-    results = []
-    batch_size = 20 # Download 20 saham per kelompok
-    
-    progress_bar = st.progress(0)
-    status_text = st.empty()
+# --- 3. UI DASHBOARD ---
+st.set_page_config(page_title="IDX Real-time Scanner", layout="wide")
+st.title("🔍 IDX Swing Scanner (Anti-Rate Limit)")
 
-    for i in range(0, len(ticker_list), batch_size):
-        batch = ticker_list[i:i+batch_size]
-        status_text.text(f"Scanning batch {i//batch_size + 1}...")
+st.sidebar.header("Konfigurasi")
+threshold_pct = st.sidebar.slider("Threshold Swing (%)", 0.5, 5.0, 2.0)
+threshold = threshold_pct / 100
+
+# Fitur Watchlist Custom (Bisa pilih manual dari list di atas)
+watchlist = st.sidebar.multiselect(
+    "Monitor Spesifik (Watchlist):", 
+    options=TICKERS_IDX, 
+    default=["BREN.JK", "BBCA.JK"]
+)
+
+# Tombol Eksekusi
+if st.button("🚀 Jalankan Scan Sekarang"):
+    results = []
+    
+    # Pilih list mana yang mau di-scan
+    target_list = TICKERS_IDX if not watchlist else watchlist
+    
+    st.info(f"Memulai scan untuk {len(target_list)} saham...")
+    progress_bar = st.progress(0)
+    
+    # BATCHING: Download 20 saham per sesi agar tidak kena blokir
+    batch_size = 20
+    for i in range(0, len(target_list), batch_size):
+        batch = target_list[i:i+batch_size]
         
-        # Download batch sekaligus untuk efisiensi
+        # Download data 1 menit (Intraday)
         data = yf.download(batch, period="1d", interval="1m", group_by='ticker', progress=False)
         
         for ticker in batch:
             try:
-                # Handle jika data cuma 1 saham vs banyak saham (format df berbeda)
-                df = data[ticker] if len(batch) > 1 else data
-                df = df.dropna()
+                # Ambil kolom Close
+                df = data[ticker].dropna() if len(batch) > 1 else data.dropna()
                 
                 if not df.empty:
                     prices = df['Close'].values
@@ -54,61 +84,38 @@ def scan_stocks(ticker_list, threshold):
                     
                     results.append({
                         "Ticker": ticker,
-                        "Price": round(prices[-1], 2),
+                        "Price": f"{prices[-1]:,.0f}",
                         "Status": status,
-                        "Swing %": round(diff * 100, 2),
-                        "Last Pivot": round(pivot, 2)
+                        "Swing Current %": round(diff * 100, 2),
+                        "Last Pivot Price": f"{pivot:,.0f}",
+                        "Time": df.index[-1].strftime('%H:%M')
                     })
-            except:
+            except Exception as e:
                 continue
         
-        # Jeda tipis untuk menghindari rate limit jika list sangat panjang
-        time.sleep(0.5) 
-        progress_bar.progress((i + batch_size) / len(ticker_list) if (i + batch_size) < len(ticker_list) else 1.0)
-    
-    status_text.text("Scan Selesai!")
-    return pd.DataFrame(results)
+        # Update progress bar
+        progress_bar.progress(min((i + batch_size) / len(target_list), 1.0))
+        time.sleep(1) # Jeda 1 detik antar batch agar aman dari rate limit
 
-# --- 3. UI STREAMLIT ---
-st.set_page_config(page_title="IDX Swing Scanner", layout="wide")
-st.title("📊 Real-time Stock Swing Scanner")
-
-# Sidebar
-st.sidebar.header("Settings")
-threshold_pct = st.sidebar.slider("Swing Threshold (%)", 0.5, 5.0, 2.0)
-threshold = threshold_pct / 100
-
-# List 800 Saham (Contoh 10, silakan isi lengkap atau load dari CSV)
-all_idx_stocks = [f"{s}.JK" for s in ["BBCA", "BBRI", "TLKM", "ASII", "GOTO", "AMMN", "BRIS", "ADRO", "UNVR", "ICBP"]] # Tambahkan sampai 800
-
-# Pilihan Mode
-mode = st.radio("Pilih Mode Scan:", ["Watchlist Spesifik", "Scan Semua (800 Saham)"])
-
-selected_stocks = []
-if mode == "Watchlist Spesifik":
-    selected_stocks = st.multiselect("Pilih saham yang mau di-monitor:", all_idx_stocks, default=all_idx_stocks[:5])
-else:
-    selected_stocks = all_idx_stocks
-
-if st.button("Mulai Scan"):
-    with st.spinner("Sedang mengambil data..."):
-        df_final = scan_stocks(selected_stocks, threshold)
+    # Tampilkan Tabel Hasil
+    if results:
+        df_results = pd.DataFrame(results)
         
-        if not df_final.empty:
-            # Highlight yang sedang turun banyak
-            def color_negative_red(val):
-                color = 'red' if val < 0 else 'green'
-                return f'color: {color}'
+        # Styling Tabel
+        def highlight_status(val):
+            color = 'red' if val == "DOWN TREND" else 'green' if val == "UP TREND" else 'white'
+            return f'color: {color}; font-weight: bold'
 
-            st.subheader(f"Hasil Analisis (Threshold {threshold_pct}%)")
-            st.dataframe(
-                df_final.style.applymap(color_negative_red, subset=['Swing %']),
-                use_container_width=True
-            )
-            
-            # Ringkasan
-            col1, col2 = st.columns(2)
-            col1.metric("Saham DOWN Trend", len(df_final[df_final['Status'] == "DOWN"]))
-            col2.metric("Saham UP Trend", len(df_final[df_final['Status'] == "UP"]))
-        else:
-            st.warning("Data tidak ditemukan atau pasar sedang tutup.")
+        st.subheader(f"Hasil Analisis (Update: {time.strftime('%H:%M:%S')})")
+        st.dataframe(
+            df_results.style.applymap(highlight_status, subset=['Status']),
+            use_container_width=True
+        )
+        
+        # Filter Saham yang sedang turun (mencari diskon)
+        st.divider()
+        st.subheader("⚠️ Saham Sedang Drop (Down Trend)")
+        df_drop = df_results[df_results['Status'] == "DOWN TREND"].sort_values(by="Swing Current %")
+        st.table(df_drop)
+    else:
+        st.warning("Tidak ada data. Pastikan jam bursa sedang buka.")
