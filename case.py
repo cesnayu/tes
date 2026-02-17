@@ -95,16 +95,17 @@ def fmt_idr(val):
 
 # --- 6. VISUALISASI ---
 
-def chart_grid(df, ticker, ma20=True, chart_type="Candle", y_min=None, y_max=None):
+def chart_grid(df, ticker, ma20=True, chart_type="Candle"):
     """
-    Grafik grid dengan skala Y seragam (y_min/y_max) dan badge persentase gain.
-    
-    - y_min, y_max: batas sumbu Y yang ditetapkan dari luar agar semua grafik sebanding
-    - Persentase gain ditampilkan sebagai annotation di kanan atas grafik
+    Grafik grid dengan:
+    - Sumbu Y kiri  : harga asli (log scale)
+    - Sumbu Y kanan : label persentase ±5% step dari harga pertama
+    - Badge gain/loss total periode di pojok kanan atas
     """
+    import numpy as np
+
     fig = go.Figure()
 
-    # Hitung gain/loss periode
     price_first = df['Close'].iloc[0]
     price_last  = df['Close'].iloc[-1]
     pct_gain    = ((price_last - price_first) / price_first) * 100
@@ -137,33 +138,33 @@ def chart_grid(df, ticker, ma20=True, chart_type="Candle", y_min=None, y_max=Non
             line=dict(color='orange', width=1), name='MA20'
         ))
 
-    # === ANNOTATION: Persentase Gain di kanan atas ===
-    fig.add_annotation(
-        xref="paper", yref="paper",
-        x=0.99, y=0.99,
-        text=f"<b>{gain_sign}{pct_gain:.2f}%</b>",
-        showarrow=False,
-        font=dict(size=13, color=gain_color),
-        align="right",
-        bgcolor="rgba(0,0,0,0.55)",
-        bordercolor=gain_color,
-        borderwidth=1,
-        borderpad=4,
-        xanchor="right",
-        yanchor="top"
-    )
+    # ── Hitung tick % kanan: setiap 5% dari harga pertama ──
+    data_low  = df['Low'].min()
+    data_high = df['High'].max()
+    margin    = (data_high - data_low) * 0.08 if data_high != data_low else data_high * 0.05
+    y_low     = max(data_low - margin, price_first * 0.01)   # hindari ≤ 0 untuk log
+    y_high    = data_high + margin
+
+    # Rentang % yang tercakup
+    pct_low  = ((y_low  - price_first) / price_first) * 100
+    pct_high = ((y_high - price_first) / price_first) * 100
+
+    # Buat tick setiap 5%
+    step = 5
+    tick_pcts   = list(range(
+        int(math.floor(pct_low  / step) * step),
+        int(math.ceil (pct_high / step) * step) + step,
+        step
+    ))
+    tick_prices = [price_first * (1 + p / 100) for p in tick_pcts]
+    tick_labels = [f"{p:+d}%" for p in tick_pcts]
+
+    # Filter tick di dalam range
+    filtered = [(p, l) for p, l in zip(tick_prices, tick_labels) if y_low <= p <= y_high]
+    tick_prices_f = [x[0] for x in filtered]
+    tick_labels_f = [x[1] for x in filtered]
 
     clr_title = "green" if price_last >= df['Open'].iloc[-1] else "red"
-
-    # Tentukan range Y: gunakan y_min/y_max global jika tersedia,
-    # fallback ke range data ± 5% agar ada ruang napas
-    if y_min is not None and y_max is not None:
-        yrange = [y_min, y_max]
-    else:
-        data_min = df['Low'].min()
-        data_max = df['High'].max()
-        margin   = (data_max - data_min) * 0.05 if data_max != data_min else data_max * 0.05
-        yrange   = [data_min - margin, data_max + margin]
 
     fig.update_layout(
         title=dict(
@@ -171,17 +172,55 @@ def chart_grid(df, ticker, ma20=True, chart_type="Candle", y_min=None, y_max=Non
             font=dict(size=13, color=clr_title),
             x=0.5, y=0.93
         ),
-        margin=dict(l=5, r=5, t=32, b=5),
+        margin=dict(l=5, r=55, t=32, b=5),   # margin kanan lebih lebar untuk label %
         height=250,
         showlegend=False,
+        # Sumbu Y kiri — log scale, harga asli, disembunyikan label-nya
         yaxis=dict(
+            type="log",
+            range=[math.log10(max(y_low, 1e-9)), math.log10(y_high)],
             showgrid=True,
-            gridcolor='rgba(128,128,128,0.2)',
-            tickfont=dict(size=8),
-            range=yrange,
+            gridcolor='rgba(128,128,128,0.15)',
+            tickfont=dict(size=7),
+            showticklabels=False,   # sembunyikan label harga kiri agar tidak crowded
         ),
-        xaxis=xaxis_cfg
+        # Sumbu Y kanan — overlay, tick % setiap 5%
+        yaxis2=dict(
+            overlaying="y",
+            side="right",
+            type="log",
+            range=[math.log10(max(y_low, 1e-9)), math.log10(y_high)],
+            tickvals=tick_prices_f,
+            ticktext=tick_labels_f,
+            tickfont=dict(size=8, color="rgba(200,200,200,0.85)"),
+            showgrid=False,
+            zeroline=False,
+        ),
+        xaxis=xaxis_cfg,
     )
+
+    # ── Garis baseline (0%) ──
+    fig.add_hline(
+        y=price_first,
+        line=dict(color="rgba(180,180,180,0.4)", width=1, dash="dot"),
+    )
+
+    # ── Badge gain total ──
+    fig.add_annotation(
+        xref="paper", yref="paper",
+        x=0.01, y=0.99,
+        text=f"<b>{gain_sign}{pct_gain:.1f}%</b>",
+        showarrow=False,
+        font=dict(size=11, color=gain_color),
+        align="left",
+        bgcolor="rgba(0,0,0,0.5)",
+        bordercolor=gain_color,
+        borderwidth=1,
+        borderpad=3,
+        xanchor="left",
+        yanchor="top"
+    )
+
     return fig
 
 
@@ -200,15 +239,12 @@ tabs = st.tabs(["📋 List", "⚖️ Compare", "📅 Recap", "🎲 Win/Loss", "�
 
 # === TAB 1: LIST ===
 with tabs[0]:
-    c1, c2, c3, c4, c5, c6 = st.columns([1, 1, 1, 1, 1, 1])
+    c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 1])
     with c1: tf = st.selectbox("Waktu", ["5d", "1mo", "3mo", "6mo", "1y"], 2)
     with c2: min_p = st.number_input("Min Rp", 0, step=50)
     with c3: max_p = st.number_input("Max Rp", 100, value=100000, step=50)
     with c4: c_type = st.radio("Grafik", ["Candle", "Line"], horizontal=True)
     with c5: show_ma = st.checkbox("MA20", True)
-    with c6: 
-        normalize_scale = st.checkbox("Skala Seragam", True, 
-                                       help="Samakan skala Y berdasarkan % perubahan agar grafik mudah dibandingkan")
 
     per_page = 20
     total_pages = math.ceil(len(LIST_SAHAM_IHSG)/per_page)
@@ -225,8 +261,8 @@ with tabs[0]:
         with st.spinner("Loading Grid..."):
             df_b = get_data(batch, period=tf)
         
-        # ── Kumpulkan semua data ticker yang lolos filter terlebih dahulu ──
-        valid_data = {}   # ticker -> DataFrame
+        # ── Kumpulkan semua data ticker yang lolos filter ──
+        valid_data = {}
         for t in batch:
             try:
                 if len(batch) > 1:
@@ -234,57 +270,18 @@ with tabs[0]:
                     dft = df_b[t].dropna()
                 else:
                     dft = df_b.dropna()
-                
                 if dft.empty: continue
                 if not (min_p <= dft['Close'].iloc[-1] <= max_p): continue
                 valid_data[t] = dft
             except:
                 continue
 
-        # ── Hitung skala Y seragam (normalisasi % return terhadap harga awal) ──
-        # Pendekatan: gunakan "% dari harga pertama" untuk menyamakan skala visual
-        # Kemudian terapkan sebagai range absolut pada tiap saham.
-        # Jika normalize_scale=True, tentukan pct_min/pct_max global lalu
-        # konversi kembali ke harga absolut per-ticker saat render.
-        
-        global_pct_min = None
-        global_pct_max = None
-
-        if normalize_scale and valid_data:
-            all_pct_low  = []
-            all_pct_high = []
-            for t, dft in valid_data.items():
-                base = dft['Close'].iloc[0]
-                if base == 0: continue
-                pct_low  = (dft['Low'].min()  - base) / base * 100
-                pct_high = (dft['High'].max() - base) / base * 100
-                all_pct_low.append(pct_low)
-                all_pct_high.append(pct_high)
-            
-            if all_pct_low and all_pct_high:
-                global_pct_min = min(all_pct_low)
-                global_pct_max = max(all_pct_high)
-                # Tambah margin 5% dari total range
-                total_range = global_pct_max - global_pct_min
-                margin = total_range * 0.05 if total_range > 0 else 2
-                global_pct_min -= margin
-                global_pct_max += margin
-
         # ── Render grafik ──
         cols = st.columns(4)
         idx = 0
         for t, dft in valid_data.items():
-            # Konversi pct range → harga absolut per ticker
-            y_min_abs = None
-            y_max_abs = None
-            if normalize_scale and global_pct_min is not None:
-                base = dft['Close'].iloc[0]
-                y_min_abs = base * (1 + global_pct_min / 100)
-                y_max_abs = base * (1 + global_pct_max / 100)
-
             with cols[idx % 4]:
-                fig = chart_grid(dft, t, show_ma, c_type, y_min=y_min_abs, y_max=y_max_abs)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(chart_grid(dft, t, show_ma, c_type), use_container_width=True)
             idx += 1
 
         gc.collect()
