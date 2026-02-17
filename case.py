@@ -3,139 +3,175 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+import time
+import requests
 
-# --- CONFIGURATION & CSS ---
-st.set_page_config(page_title="IHSG Dashboard", layout="wide")
+# --- CONFIGURATION ---
+st.set_page_config(page_title="IHSG Pro Dashboard", layout="wide")
 
+# Custom CSS untuk mempercantik UI
 st.markdown("""
     <style>
-    .main { background-color: #f5f7f9; }
-    .stTable { background-color: white; border-radius: 10px; }
+    .main { background-color: #f8f9fa; }
+    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     .heatmap-box {
         display: inline-block;
-        width: 40px;
-        height: 40px;
-        line-height: 40px;
-        text-align: center;
-        border-radius: 5px;
-        margin: 2px;
-        font-weight: bold;
-        color: white;
+        width: 35px; height: 35px; line-height: 35px;
+        text-align: center; border-radius: 4px;
+        margin: 2px; font-size: 10px; font-weight: bold; color: white;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- DATA LIST ---
-TICKERS = ["BBCA.JK", "BBRI.JK", "BMRI.JK", "TLKM.JK", "ASII.JK", "GOTO.JK", "BBNI.JK", "UNVR.JK", "ADRO.JK", "KLBF.JK"]
+# --- LIST TICKER IHSG (Contoh) ---
+TICKERS = [
+    "BBCA.JK", "BBRI.JK", "BMRI.JK", "TLKM.JK", "ASII.JK", 
+    "GOTO.JK", "BBNI.JK", "UNVR.JK", "ADRO.JK", "KLBF.JK",
+    "CPIN.JK", "UNTR.JK", "ICBP.JK", "AMRT.JK", "PGAS.JK"
+]
 
-# --- FUNCTIONS ---
+# --- HELPER FUNCTIONS ---
+
 @st.cache_data(ttl=3600)
-def fetch_stock_data(tickers, period="1mo"):
-    """Mengambil data historical saham secara batch."""
-    data = yf.download(tickers, period=period, group_by='ticker')
+def fetch_historical_batch(tickers):
+    """Mengambil data harga penutupan secara massal (efisien)."""
+    # Gunakan period 2 tahun agar data YTD dan Weekly aman
+    data = yf.download(tickers, period="2y", interval="1d", group_by='ticker')
     return data
 
 @st.cache_data(ttl=3600)
-def get_fundamentals(tickers):
-    """Mengambil data fundamental untuk perbandingan."""
-    fund_data = []
-    for t in tickers:
-        info = yf.Ticker(t).info
-        fund_data.append({
-            "Ticker": t,
-            "Price": info.get("currentPrice"),
-            "PER": info.get("trailingPE"),
-            "PBV": info.get("priceToBook"),
-            "MarketCap": info.get("marketCap")
-        })
-    return pd.DataFrame(fund_data)
-
-# --- SESSION STATE INITIALIZATION ---
-if 'data' not in st.session_state:
-    with st.spinner("Fetching market data..."):
-        st.session_state.data = fetch_stock_data(TICKERS, period="1y")
-
-# --- UI TABS ---
-tab_list, tab_compare, tab_recap, tab_winloss, tab_cek = st.tabs([
-    "📈 List Saham", "⚖️ Compare", "📊 Recap", "🔥 Win/Loss", "📅 Cek Tanggal"
-])
-
-# 1. TAB LIST (Grid View with Pagination)
-with tab_list:
-    st.header("IHSG Live Monitor")
-    cols_per_row = 3
-    items_per_page = 6
-    total_pages = (len(TICKERS) // items_per_page) + 1
+def get_fundamental_safe(selected_tickers):
+    """Mengambil data fundamental satu per satu dengan delay untuk menghindari blokir."""
+    results = []
+    progress_text = "Mengambil data fundamental... Mohon tunggu."
+    my_bar = st.progress(0, text=progress_text)
     
-    page = st.number_input("Halaman", min_value=1, max_value=total_pages, step=1)
-    start_idx = (page - 1) * items_per_page
-    end_idx = start_idx + items_per_page
+    # Headers agar request terlihat seperti browser asli
+    headers = {'User-agent': 'Mozilla/5.0'}
     
-    current_tickers = TICKERS[start_idx:end_idx]
-    rows = [current_tickers[i:i + cols_per_row] for i in range(0, len(current_tickers), cols_per_row)]
-    
-    for row in rows:
-        cols = st.columns(cols_per_row)
-        for i, ticker in enumerate(row):
-            df = st.session_state.data[ticker].dropna()
-            last_price = df['Close'].iloc[-1]
-            prev_price = df['Close'].iloc[-2]
-            pct_change = ((last_price - prev_price) / prev_price) * 100
+    for i, t in enumerate(selected_tickers):
+        try:
+            ticker_obj = yf.Ticker(t)
+            # Menambahkan sedikit delay (0.7 detik) tiap request
+            time.sleep(0.7) 
+            info = ticker_obj.info
             
-            fig = go.Figure(data=[go.Scatter(x=df.index[-20:], y=df['Close'][-20:], mode='lines+markers')])
-            fig.update_layout(title=f"{ticker} ({pct_change:.2f}%)", height=250, margin=dict(l=20, r=20, t=40, b=20))
-            cols[i].plotly_chart(fig, use_container_width=True)
-
-# 2. TAB COMPARE (Technical & Fundamental)
-with tab_compare:
-    st.header("Fundamental Comparison")
-    selected_tickers = st.multiselect("Pilih Saham", TICKERS, default=TICKERS[:3])
-    if selected_tickers:
-        fund_df = get_fundamentals(selected_tickers)
-        st.table(fund_df)
-
-# 3. TAB RECAP (Performance Summary)
-with tab_recap:
-    st.header("Performance Recap")
-    recap_list = []
-    for t in TICKERS:
-        df = st.session_state.data[t]['Close'].dropna()
-        recap_list.append({
-            "Ticker": t,
-            "1D %": ((df.iloc[-1] / df.iloc[-2]) - 1) * 100,
-            "1W %": ((df.iloc[-1] / df.iloc[-5]) - 1) * 100,
-            "1M %": ((df.iloc[-1] / df.iloc[-21]) - 1) * 100,
-            "YTD %": ((df.iloc[-1] / df.iloc[0]) - 1) * 100
-        })
-    st.dataframe(pd.DataFrame(recap_list).style.format(precision=2))
-
-# 4. TAB WIN/LOSS (Heatmap)
-with tab_winloss:
-    st.header("20-Day Performance Heatmap")
-    for t in TICKERS[:5]: # Contoh 5 saham saja agar tidak terlalu panjang
-        st.write(f"**{t}**")
-        df = st.session_state.data[t]['Close'].dropna().tail(20)
-        changes = df.pct_change() * 100
+            results.append({
+                "Ticker": t,
+                "Nama": info.get("shortName", "N/A"),
+                "Price": info.get("currentPrice", 0),
+                "PER": info.get("trailingPE", "N/A"),
+                "PBV": info.get("priceToBook", "N/A"),
+                "Market Cap": f"{info.get('marketCap', 0):,}"
+            })
+        except Exception:
+            results.append({"Ticker": t, "Nama": "Limit/Error", "Price": 0, "PER": "N/A", "PBV": "N/A", "Market Cap": 0})
         
-        cols = st.columns(20)
-        for i, val in enumerate(changes):
-            color = "#2ecc71" if val > 0 else "#e74c3c" if val < 0 else "#bdc3c7"
-            cols[i].markdown(f'<div class="heatmap-box" style="background-color:{color}">{i+1}</div>', unsafe_allow_html=True)
+        my_bar.progress((i + 1) / len(selected_tickers))
+    
+    my_bar.empty()
+    return pd.DataFrame(results)
 
-# 5. TAB CEK TANGGAL (Date Comparison)
-with tab_cek:
-    st.header("Price Comparison by Date")
-    col1, col2 = st.columns(2)
-    date1 = col1.date_input("Tanggal Awal", datetime.now() - timedelta(days=30))
-    date2 = col2.date_input("Tanggal Akhir", datetime.now())
+# --- INITIALIZATION ---
+if 'stock_data' not in st.session_state:
+    with st.spinner("Mengunduh data pasar IHSG..."):
+        st.session_state.stock_data = fetch_historical_batch(TICKERS)
+
+# --- UI LAYOUT ---
+st.title("🇮🇩 IHSG Market Dashboard")
+st.caption("Data real-time via Yahoo Finance API dengan optimasi Rate Limit")
+
+tabs = st.tabs(["📈 Halaman List", "⚖️ Bandingkan", "📊 Rekap Performa", "🔥 Win/Loss", "📅 Cek Tanggal"])
+
+# --- 1. TAB LIST (Pagination & Grid) ---
+with tabs[0]:
+    st.subheader("Grid Monitoring Saham")
+    items_per_page = 6
+    total_pages = (len(TICKERS) // items_per_page) + (1 if len(TICKERS) % items_per_page > 0 else 0)
     
-    selected_t = st.selectbox("Pilih Ticker", TICKERS)
-    df_t = st.session_state.data[selected_t]['Close'].dropna()
+    col_p1, col_p2 = st.columns([1, 4])
+    page = col_p1.number_input("Halaman", min_value=1, max_value=total_pages, step=1)
     
-    try:
-        p1 = df_t.asof(pd.Timestamp(date1))
-        p2 = df_t.asof(pd.Timestamp(date2))
-        diff = ((p2 - p1) / p1) * 100
-        st.metric(label=f"Performa {selected_t}", value=f"{p2:.2f}", delta=f"{diff:.2f}%")
-    except:
-        st.error("Data tidak tersedia untuk tanggal tersebut.")
+    idx_start = (page - 1) * items_per_page
+    idx_end = idx_start + items_per_page
+    current_batch = TICKERS[idx_start:idx_end]
+    
+    cols = st.columns(3)
+    for i, t in enumerate(current_batch):
+        with cols[i % 3]:
+            df = st.session_state.stock_data[t]['Close'].dropna()
+            if not df.empty:
+                last_p = df.iloc[-1]
+                prev_p = df.iloc[-2]
+                change = ((last_p - prev_p) / prev_p) * 100
+                
+                fig = go.Figure(data=[go.Scatter(x=df.index[-30:], y=df[-30:], fill='tozeroy', line_color='green' if change >= 0 else 'red')])
+                fig.update_layout(title=f"{t} ({change:.2f}%)", height=200, margin=dict(l=0,r=0,t=30,b=0), 
+                                 xaxis_visible=False, yaxis_visible=True)
+                st.plotly_chart(fig, use_container_width=True)
+
+# --- 2. TAB COMPARE ---
+with tabs[1]:
+    st.subheader("Analisis Fundamental & Teknikal")
+    selected = st.multiselect("Pilih maksimal 5 saham untuk dibandingkan:", TICKERS, default=TICKERS[:3])
+    
+    if st.button("Proses Perbandingan"):
+        if len(selected) > 5:
+            st.error("Maksimal 5 saham untuk menjaga kestabilan koneksi.")
+        else:
+            fund_df = get_fundamental_safe(selected)
+            st.dataframe(fund_df, use_container_width=True)
+
+# --- 3. TAB RECAP ---
+with tabs[2]:
+    st.subheader("Tabel Ringkasan Performa")
+    recap_data = []
+    for t in TICKERS:
+        df = st.session_state.stock_data[t]['Close'].dropna()
+        if len(df) > 250:
+            recap_data.append({
+                "Ticker": t,
+                "Harian %": ((df.iloc[-1] / df.iloc[-2]) - 1) * 100,
+                "Mingguan %": ((df.iloc[-1] / df.iloc[-5]) - 1) * 100,
+                "Bulanan %": ((df.iloc[-1] / df.iloc[-21]) - 1) * 100,
+                "YTD %": ((df.iloc[-1] / df.loc[f"{datetime.now().year}-01-02":].iloc[0]) - 1) * 100
+            })
+    st.table(pd.DataFrame(recap_data).set_index("Ticker").style.format("{:.2f}%"))
+
+# --- 4. TAB WIN/LOSS (Heatmap) ---
+with tabs[3]:
+    st.subheader("20-Day Win/Loss Heatmap")
+    st.info("Hijau: Naik, Merah: Turun, Abu-abu: Tetap")
+    
+    for t in TICKERS[:10]: # Batasi 10 agar UI tidak terlalu panjang
+        df_hl = st.session_state.stock_data[t]['Close'].dropna().tail(21)
+        changes = df_hl.pct_change().dropna() * 100
+        
+        st.write(f"**{t}**")
+        html_line = ""
+        for val in changes:
+            color = "#2ecc71" if val > 0.1 else "#e74c3c" if val < -0.1 else "#bdc3c7"
+            html_line += f'<div class="heatmap-box" style="background-color:{color}">{val:.1f}</div>'
+        st.markdown(html_line, unsafe_allow_html=True)
+        st.divider()
+
+# --- 5. TAB CEK TANGGAL ---
+with tabs[4]:
+    st.subheader("Bandingkan Harga antar Tanggal")
+    c1, c2, c3 = st.columns(3)
+    target_t = c1.selectbox("Pilih Saham", TICKERS, key="cek_t")
+    d1 = c2.date_input("Dari", datetime.now() - timedelta(days=60))
+    d2 = c3.date_input("Sampai", datetime.now())
+    
+    if d1 < d2:
+        df_target = st.session_state.stock_data[target_t]['Close'].dropna()
+        try:
+            val1 = df_target.asof(pd.Timestamp(d1))
+            val2 = df_target.asof(pd.Timestamp(d2))
+            diff_pct = ((val2 - val1) / val1) * 100
+            
+            col_m1, col_m2 = st.columns(2)
+            col_m1.metric(f"Harga {d1}", f"{val1:,.2f}")
+            col_m2.metric(f"Harga {d2}", f"{val2:,.2f}", delta=f"{diff_pct:.2f}%")
+        except:
+            st.warning("Data tidak ditemukan pada rentang tanggal tersebut.")
