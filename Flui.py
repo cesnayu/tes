@@ -96,13 +96,3 @@ if tickers:
                         st.plotly_chart(fig, use_container_width=True)
                     else:
                         st.error(f"Ticker {ticker} tidak valid.")
-
----
-
-### ### Mengapa Grafiknya Tadi Flat?
-
-1.  **`fill='tozeroy'` tanpa Autorange:** Secara default, fitur *fill to zero* terkadang memaksa Plotly menampilkan angka 0 pada sumbu Y agar "arsiran"-nya terlihat sampai dasar. 
-2.  **Missing Data:** Jika ada satu baris data yang harganya `NaN` atau `0`, Plotly akan menarik garis lurus ke bawah, sehingga pergerakan harga yang aslinya di angka ribuan jadi terlihat seperti garis datar di atas.
-3.  **Y-Axis Lock:** Kode di atas menggunakan `autorange=True` yang secara otomatis akan melakukan *zoom* pada titik tertinggi dan terendah harga saja (misal: range 8950 - 9050), sehingga fluktuasi sekecil apapun akan terlihat **smooth** dan jelas.
-
-**Apakah tampilannya sekarang sudah lebih proporsional? Kalau mau lebih "rame", saya bisa tambahkan garis harga rata-rata (VWAP) di dalamnya.**
