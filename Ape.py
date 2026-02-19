@@ -3,105 +3,96 @@ import yfinance as yf
 import plotly.graph_objects as go
 import pandas as pd
 
-st.set_page_config(layout="wide", page_title="Stock 5-Min Monitor")
+st.set_page_config(layout="wide", page_title="Stock Monitor")
 
-# Daftar Watchlist
-WATCHLIST = ["BBCA.JK", "BBRI.JK", "BMRI.JK", "TLKM.JK", "ASII.JK", "GOTO.JK"]
+# List saham untuk Tab 2
+DAFTAR_SAHAM = ["BBCA.JK", "BBRI.JK", "BMRI.JK", "TLKM.JK", "ASII.JK", "GOTO.JK"]
 
-def ambil_data_aman(ticker_raw):
-    """Ambil data tanpa menggunakan try-except"""
-    t = ticker_raw.strip().upper()
-    full_t = f"{t}.JK" if len(t) == 4 and "." not in t else t
-    
-    # Download data
-    df = yf.download(full_t, period="1d", interval="1m", progress=False)
-    
-    # Jika kosong, coba tarik 5 hari terakhir
-    if df is None or df.empty:
-        df = yf.download(full_t, period="5d", interval="1m", progress=False)
-    
-    # Jika masih kosong setelah dicoba lagi, stop di sini
-    if df is None or df.empty:
-        return None, full_t
+def ambil_data(kode_raw):
+    """Fungsi download data yang paling stabil"""
+    nama = kode_raw.strip().upper()
+    if len(nama) == 4 and "." not in nama:
+        ticker = f"{nama}.JK"
+    else:
+        ticker = nama
         
-    # Perbaiki struktur tabel (Multi-index fix)
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
+    df = yf.download(ticker, period="1d", interval="1m", progress=False)
     
-    # Pastikan kolom Close ada dan ubah ke angka float
-    if 'Close' in df.columns:
-        df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
-        return df['Close'].dropna(), full_t
+    # Jika market tutup, ambil data backup
+    if df is None or df.empty:
+        df = yf.download(ticker, period="5d", interval="1m", progress=False)
         
-    return None, full_t
+    if df is not None and not df.empty:
+        # Ratakan kolom (Fix Multi-index)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        return df['Close'].astype(float).dropna(), ticker
+        
+    return None, ticker
 
-st.title("📈 5-Minute Pulse Dashboard (Stable Version)")
+st.title("📊 Real-Time Stock Pulse")
 
-tab1, tab2 = st.tabs(["🔍 Search Monitor", "⚡ 5-Min Movers"])
+t1, t2 = st.tabs(["🔍 Search", "⚡ Pergerakan 5 Menit"])
 
-with tab1:
-    q = st.text_input("Cari Saham (Contoh: bbca bbri):", "BBCA BBRI")
-    tickers = q.split()
-    
-    if tickers:
-        for i in range(0, len(tickers), 3):
+with t1:
+    input_user = st.text_input("Masukkan kode saham:", "BBCA BBRI")
+    list_input = input_user.split()
+    if list_input:
+        for i in range(0, len(list_input), 3):
             cols = st.columns(3)
             for j in range(3):
                 idx = i + j
-                if idx < len(tickers):
+                if idx < len(list_input):
                     with cols[j]:
-                        p, name = ambil_data_aman(tickers[idx])
-                        
-                        # Validasi data dengan IF, bukan TRY
-                        if p is not None and len(p) >= 2:
-                            now = float(p.iloc[-1])
-                            old = float(p.iloc[-6]) if len(p) >= 6 else float(p.iloc[0])
-                            pct = ((now - old) / old) * 100
+                        data_close, nama_fix = ambil_data(list_input[idx])
+                        if data_close is not None and len(data_close) >= 2:
+                            sekarang = float(data_close.iloc[-1])
+                            # Ambil harga 5 menit lalu
+                            posisi_lama = -6 if len(data_close) >= 6 else 0
+                            harga_lama = float(data_close.iloc[posisi_lama])
                             
-                            color = "#00FF41" if pct >= 0 else "#FF4B4B"
+                            # Hitung persentase
+                            skor = ((sekarang - harga_lama) / harga_lama) * 100
                             
                             fig = go.Figure(go.Scatter(
-                                x=p.index, y=p.values,
-                                mode='lines', line=dict(color=color, width=2.5, shape='spline')
+                                x=data_close.index, y=data_close.values,
+                                mode='lines', line=dict(color="#00FF41" if skor >= 0 else "#FF4B4B", width=2)
                             ))
                             fig.update_layout(
-                                title=f"<b>{name}</b>: {now:,.0f} ({pct:+.2f}%)",
-                                template="plotly_dark", height=280, margin=dict(l=5,r=5,t=50,b=5),
+                                title=f"<b>{nama_fix}</b>: {sekarang:,.0f} ({skor:+.2f}%)",
+                                template="plotly_dark", height=250, margin=dict(l=5,r=5,t=40,b=5),
                                 yaxis=dict(autorange=True, side="right")
                             )
                             st.plotly_chart(fig, use_container_width=True)
-                        else:
-                            st.warning(f"{tickers[idx]} tidak tersedia.")
 
-with tab2:
-    if st.button("Refresh Analisis"):
+with t2:
+    if st.button("Update Data"):
         st.rerun()
     
-    analysis = []
-    with st.spinner("Menghitung data..."):
-        for saham in WATCHLIST:
-            p, name = ambil_data_aman(saham)
+    hasil_analisa = []
+    for s in DAFTAR_SAHAM:
+        p, n = ambil_data(s)
+        
+        # Validasi data
+        if p is not None and len(p) >= 2:
+            current_val = float(p.iloc[-1])
+            past_val = float(p.iloc[-6]) if len(p) >= 6 else float(p.iloc[0])
             
-            # Gunakan pengecekan manual IF
-            if p is not None and len(p) >= 2:
-                val_now = float(p.iloc[-1])
-                val_old = float(p.iloc[-6]) if len(p) >= 6 else float(p.iloc[0])
-                diff_pct = ((val_now - val_old) / val_old) * 100
-                
-                analysis.append({
-                    "Ticker": name,
-                    "Price": val_now,
-                    "Change_5m": diff_pct
-                })
-    
-    if analysis:
-        res = pd.DataFrame(analysis).sort_values("Change_5m", ascending=False)
+            # Ganti rumus & nama variabel (Tanpa diff_pct)
+            persen_baru = ((current_val - past_val) / past_val) * 100
+            
+            # Simpan ke list
+            baris = {"Ticker": n, "Harga": current_val, "Update_5m": persen_baru}
+            hasil_analisa.append(baris)
+            
+    if len(hasil_analisa) > 0:
+        df_final = pd.DataFrame(hasil_analisa)
+        df_urut = df_final.sort_values("Update_5m", ascending=False)
+        
         c1, c2 = st.columns(2)
         with c1:
-            st.success("🚀 TOP 5-MIN GAINERS")
-            st.table(res.head(5))
+            st.success("🚀 TOP GAINERS")
+            st.table(df_urut.head(5))
         with c2:
-            st.error("📉 TOP 5-MIN LOSERS")
-            st.table(res.tail(5).sort_values("Change_5m"))
-    else:
-        st.info("Data belum tersedia. Klik refresh.")
+            st.error("📉 TOP LOSERS")
+            st.table(df_urut.tail(5))
