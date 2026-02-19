@@ -2,90 +2,117 @@ import streamlit as st
 import yfinance as yf
 import plotly.graph_objects as go
 import pandas as pd
+from datetime import datetime
 
-st.set_page_config(layout="wide", page_title="Stock Monitor")
+st.set_page_config(layout="wide", page_title="Safe Stock Dashboard")
 
-# List saham untuk dipantau
-WATCHLIST = ["BBCA.JK", "BBRI.JK", "BMRI.JK", "TLKM.JK", "ASII.JK", "GOTO.JK"]
+# --- KONFIGURASI SAHAM ---
+WATCHLIST = ["BBCA.JK", "BBRI.JK", "BMRI.JK", "TLKM.JK", "ASII.JK", "GOTO.JK", "BBNI.JK", "UNVR.JK", "ADRO.JK"]
 
-st.title("📈 Real-Time Stock Pulse")
-
-t1, t2 = st.tabs(["🔍 Search", "⚡ Movers 5 Menit"])
-
-with t1:
-    q = st.text_input("Ketik kode saham:", "BBCA BBRI")
-    list_saham = q.split()
+def get_stock_data(ticker_input):
+    # Auto-suffix .JK
+    ticker = f"{ticker_input.upper()}.JK" if len(ticker_input) == 4 and "." not in ticker_input else ticker_input.upper()
     
-    if list_saham:
-        for i, s_input in enumerate(list_saham):
-            # Layouting 3 kolom
-            if i % 3 == 0:
-                cols = st.columns(3)
+    try:
+        df = yf.download(ticker, period="1d", interval="1m", progress=False)
+        
+        # Backup jika market hari ini tutup
+        if df.empty:
+            df = yf.download(ticker, period="5d", interval="1m", progress=False)
+            if not df.empty:
+                last_date = df.index[-1].date()
+                df = df[df.index.date == last_date]
+        
+        if df.empty:
+            return None, ticker
+
+        # --- FIX MULTI-INDEX & DATA TYPE ---
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        
+        # Pastikan kolom Close adalah angka (float)
+        df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
+        df = df.dropna(subset=['Close'])
             
-            with cols[i % 3]:
-                # Logika Ticker
-                t_raw = s_input.upper()
-                nama_saham = f"{t_raw}.JK" if len(t_raw) == 4 and "." not in t_raw else t_raw
-                
-                # Tarik Data
-                df = yf.download(nama_saham, period="1d", interval="1m", progress=False)
-                if df is None or df.empty:
-                    df = yf.download(nama_saham, period="5d", interval="1m", progress=False)
+        return df, ticker
+    except:
+        return None, ticker
 
-                if df is not None and not df.empty:
-                    # Fix kolom jika bertumpuk
-                    if isinstance(df.columns, pd.MultiIndex):
-                        df.columns = df.columns.get_level_values(0)
-                    
-                    p = df['Close'].astype(float).dropna()
-                    
-                    if len(p) >= 2:
-                        now_val = float(p.iloc[-1])
-                        old_idx = -6 if len(p) >= 6 else 0
-                        old_val = float(p.iloc[old_idx])
-                        
-                        # Hitung perubahan
-                        hasil_ubah = ((now_val - old_val) / old_val) * 100
-                        warna = "#00FF41" if hasil_ubah >= 0 else "#FF4B4B"
-                        
-                        fig = go.Figure(go.Scatter(x=p.index, y=p.values, line=dict(color=warna, width=2)))
-                        fig.update_layout(
-                            title=f"<b>{nama_saham}</b>: {now_val:,.0f} ({hasil_ubah:+.2f}%)",
-                            template="plotly_dark", height=250, margin=dict(l=5,r=5,t=40,b=5),
-                            yaxis=dict(autorange=True, side="right")
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
+# --- UI DASHBOARD ---
+st.title("📊 5-Minute Pulse Monitor")
 
-with t2:
-    if st.button("Refresh Data"):
-        st.rerun()
+tab1, tab2 = st.tabs(["🔍 Search Custom", "⚡ 5-Min Gainers/Losers"])
+
+with tab1:
+    search_input = st.text_input("Ketik kode saham (misal: bbca bbri):", "BBCA BBRI")
+    tickers_to_show = [t.strip() for t in search_input.split() if t.strip()]
     
-    list_hasil = []
-    for s in WATCHLIST:
-        df_w = yf.download(s, period="1d", interval="1m", progress=False)
-        if df_w is None or df_w.empty:
-            df_w = yf.download(s, period="5d", interval="1m", progress=False)
-            
-        if df_w is not None and not df_w.empty:
-            if isinstance(df_w.columns, pd.MultiIndex):
-                df_w.columns = df_w.columns.get_level_values(0)
-            
-            pw = df_w['Close'].astype(float).dropna()
-            
-            if len(pw) >= 2:
-                v_now = float(pw.iloc[-1])
-                v_old = float(pw.iloc[-6]) if len(pw) >= 6 else float(pw.iloc[0])
-                v_ubah = ((v_now - v_old) / v_old) * 100
+    if tickers_to_show:
+        for i in range(0, len(tickers_to_show), 3):
+            cols = st.columns(3)
+            for j in range(3):
+                idx = i + j
+                if idx < len(tickers_to_show):
+                    with cols[j]:
+                        df, full_name = get_stock_data(tickers_to_show[idx])
+                        if df is not None and len(df) >= 2:
+                            current_p = float(df['Close'].iloc[-1])
+                            # Perubahan 5 menit
+                            old_idx = -6 if len(df) >= 6 else 0
+                            old_p = float(df['Close'].iloc[old_idx])
+                            change_5m = ((current_p - old_p) / old_p) * 100
+                            
+                            color = "#00FF41" if change_5m >= 0 else "#FF4B4B"
+                            
+                            fig = go.Figure(go.Scatter(
+                                x=df.index, y=df['Close'],
+                                mode='lines', line=dict(color=color, width=2.5, shape='spline')
+                            ))
+                            fig.update_layout(
+                                title=f"<b>{full_name}</b>: {current_p:,.0f} ({change_5m:+.2f}%)",
+                                template="plotly_dark", height=300,
+                                yaxis=dict(autorange=True, side="right"),
+                                margin=dict(l=5, r=5, t=50, b=5)
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+
+with tab2:
+    st.subheader("Real-Time Movers (Last 5 Minutes)")
+    analysis_data = []
+    
+    with st.spinner("Crunching data..."):
+        for t in WATCHLIST:
+            df, full_name = get_stock_data(t)
+            if df is not None and len(df) >= 2:
+                # Ambil nilai skalar (bukan Series) menggunakan float()
+                curr = float(df['Close'].iloc[-1])
+                prev_idx = -6 if len(df) >= 6 else 0
+                prev = float(df['Close'].iloc[prev_idx])
+                diff_pct = ((curr - prev) / prev) * 100
                 
-                # Masukkan ke list
-                list_hasil.append({"Ticker": s, "Harga": v_now, "Ubah_5m": v_ubah})
-            
-    if len(list_hasil) > 0:
-        res_df = pd.DataFrame(list_hasil).sort_values("Ubah_5m", ascending=False)
+                analysis_data.append({
+                    "Ticker": full_name,
+                    "Price": round(curr, 2),
+                    "5m_Pct": round(diff_pct, 4) # Gunakan nama kolom tanpa spasi/simbol agar aman
+                })
+    
+    if analysis_data:
+        # Konversi ke DataFrame
+        res_df = pd.DataFrame(analysis_data)
+        
+        # Pastikan tipe data kolom sorting adalah float
+        res_df["5m_Pct"] = res_df["5m_Pct"].astype(float)
+        
+        # Urutkan
+        res_df = res_df.sort_values(by="5m_Pct", ascending=False)
+        
         c1, c2 = st.columns(2)
         with c1:
-            st.success("🚀 TOP GAINERS")
-            st.table(res_df.head(5))
+            st.success("🚀 TOP 5-MIN GAINERS")
+            # Styling agar lebih rapi
+            st.table(res_df.head(5).style.format({"5m_Pct": "{:+.2f}%", "Price": "{:,.0f}"}))
         with c2:
-            st.error("📉 TOP LOSERS")
-            st.table(res_df.tail(5))
+            st.error("📉 TOP 5-MIN LOSERS")
+            st.table(res_df.tail(5).sort_values(by="5m_Pct").style.format({"5m_Pct": "{:+.2f}%", "Price": "{:,.0f}"}))
+    else:
+        st.warning("Tidak ada data yang bisa dianalisis.")
