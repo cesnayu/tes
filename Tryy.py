@@ -11,41 +11,59 @@ dates_input   = st.sidebar.text_input("Tanggal (YYYY-MM-DD):", "2024-02-01, 2024
 
 if st.sidebar.button("Proses Data"):
     tickers      = [t.strip() for t in tickers_input.split(",")]
-    target_dates = [pd.Timestamp(d.strip()) for d in dates_input.split(",")]
+    target_dates = [d.strip() for d in dates_input.split(",")]
 
-    raw = yf.download(tickers, start="2024-01-20", end="2024-02-20", auto_adjust=True, progress=False)
+    # Download satu per satu agar lebih stabil
+    all_data = {}
+    for t in tickers:
+        raw = yf.download(t, start="2024-01-20", end="2024-02-20", auto_adjust=True, progress=False)
+        
+        # Flatten kolom jika MultiIndex
+        if isinstance(raw.columns, pd.MultiIndex):
+            raw.columns = raw.columns.get_level_values(0)
+        
+        # Hapus timezone dari index
+        raw.index = raw.index.tz_localize(None) if raw.index.tz else raw.index
+        
+        # Simpan sebagai string YYYY-MM-DD
+        raw.index = raw.index.strftime("%Y-%m-%d")
+        
+        all_data[t] = raw
 
-    # Hapus timezone agar bisa dicocokkan
-    raw.index = raw.index.tz_localize(None) if raw.index.tz else raw.index
-
-    if isinstance(raw.columns, pd.MultiIndex):
-        df_open  = raw["Open"]
-        df_high  = raw["High"]
-        df_close = raw["Close"]
-    else:
-        df_open  = raw[["Open"]].rename(columns={"Open": tickers[0]})
-        df_high  = raw[["High"]].rename(columns={"High": tickers[0]})
-        df_close = raw[["Close"]].rename(columns={"Close": tickers[0]})
-
-    df_return    = df_close.pct_change() * 100
-    df_hvo       = ((df_high - df_open) / df_open) * 100
+    # Cek tanggal tersedia dari ticker pertama
+    sample_index = list(all_data[tickers[0]].index)
 
     analysis_list = []
 
     for d in target_dates:
-        if d in raw.index:
+        if d in sample_index:
             for t in tickers:
+                df = all_data[t]
+                open_  = float(df.loc[d, "Open"])
+                high   = float(df.loc[d, "High"])
+                close  = float(df.loc[d, "Close"])
+
+                # Hitung return: ambil close hari sebelumnya
+                idx_pos = sample_index.index(d)
+                if idx_pos > 0:
+                    prev_close = float(df.iloc[idx_pos - 1]["Close"])
+                    ret = ((close - prev_close) / prev_close) * 100
+                else:
+                    ret = 0.0
+
+                hvo = ((high - open_) / open_) * 100
+
                 analysis_list.append({
                     "Ticker"          : t.replace(".JK", ""),
-                    "Tanggal"         : d.strftime("%Y-%m-%d"),
-                    "Open"            : round(float(df_open.loc[d, t]), 2),
-                    "High"            : round(float(df_high.loc[d, t]), 2),
-                    "High vs Open (%)": round(float(df_hvo.loc[d, t]), 2),
-                    "Close"           : round(float(df_close.loc[d, t]), 2),
-                    "Return (%)"      : round(float(df_return.loc[d, t]), 2),
+                    "Tanggal"         : d,
+                    "Open"            : round(open_, 2),
+                    "High"            : round(high, 2),
+                    "High vs Open (%)": round(hvo, 2),
+                    "Close"           : round(close, 2),
+                    "Return (%)"      : round(ret, 2),
                 })
         else:
-            st.warning(f"⚠️ {d.strftime('%Y-%m-%d')} tidak tersedia (libur/pasar tutup).")
+            st.warning(f"⚠️ {d} tidak tersedia (libur/pasar tutup).")
 
     if analysis_list:
         df_long  = pd.DataFrame(analysis_list)
