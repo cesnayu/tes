@@ -1,114 +1,213 @@
 import streamlit as st
 import yfinance as yf
-import plotly.graph_objects as go
 import pandas as pd
+import plotly.graph_objects as go
+from datetime import datetime, timedelta
+import pytz
 
-# Konfigurasi Dasar
-st.set_page_config(layout="wide", page_title="Safe Stock Dash")
+st.set_page_config(page_title="Professional Stock Dashboard", layout="wide")
 
-# Daftar Watchlist untuk Tab 2
-WATCHLIST = ["BBCA.JK", "BBRI.JK", "BMRI.JK", "TLKM.JK", "ASII.JK", "GOTO.JK"]
+# ==============================
+# SMART TICKER FORMATTER
+# ==============================
+def format_ticker(ticker):
+    ticker = ticker.strip().upper()
+    if "." not in ticker and len(ticker) == 4:
+        return ticker + ".JK"
+    return ticker
 
-def get_single_stock(ticker_input):
-    """Fungsi paling stabil untuk ambil data saham tunggal"""
-    # Auto-suffix .JK
-    t = ticker_input.upper()
-    full_t = f"{t}.JK" if len(t) == 4 and "." not in t else t
-    
+# ==============================
+# FETCH DATA WITH AUTO FALLBACK
+# ==============================
+def fetch_data(ticker):
     try:
-        # Ambil data 1 menit
-        df = yf.download(full_t, period="1d", interval="1m", progress=False)
-        
-        # Jika hari ini kosong, ambil hari terakhir buka
-        if df.empty:
-            df = yf.download(full_t, period="5d", interval="1m", progress=False)
-            if not df.empty:
-                last_date = df.index[-1].date()
-                df = df[df.index.date == last_date]
-        
-        if df.empty:
-            return None, full_t
+        df = yf.download(
+            ticker,
+            period="1d",
+            interval="1m",
+            progress=False
+        )
 
-        # --- BERSIHKAN DATA (Kunci Utama Anti-Error) ---
-        # 1. Jika kolomnya bertumpuk (Multi-index), ratakan jadi satu lapis
+        # Fix Multi-Index Columns
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
-        
-        # 2. Pastikan kolom 'Close' ada
-        if 'Close' not in df.columns:
-            return None, full_t
-            
-        # 3. Ambil data Close dan pastikan jadi angka (float)
-        prices = df['Close'].astype(float).dropna()
-        return prices, full_t
+
+        # If empty (market closed), fetch last available day
+        if df.empty:
+            df = yf.download(
+                ticker,
+                period="5d",
+                interval="1m",
+                progress=False
+            )
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+
+        return df
+
     except Exception:
-        return None, full_t
+        return pd.DataFrame()
 
-# --- Tampilan Dashboard ---
-st.title("📈 Stock Pulse Dashboard")
+# ==============================
+# CALCULATE 5-MIN CHANGE
+# ==============================
+def calculate_change(df):
+    try:
+        if len(df) < 6:
+            return None, None
 
-tab1, tab2 = st.tabs(["🔍 Monitor Saham", "⚡ Perubahan 5 Menit"])
+        latest_price = df["Close"].iloc[-1]
+        price_5m_ago = df["Close"].iloc[-6]
 
-# TAB 1: SEARCH
+        pct_change = ((latest_price - price_5m_ago) / price_5m_ago) * 100
+
+        return latest_price, pct_change
+
+    except Exception:
+        return None, None
+
+# ==============================
+# PLOT SMOOTH CHART
+# ==============================
+def plot_chart(df, ticker):
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Scatter(
+            x=df.index,
+            y=df["Close"],
+            mode="lines",
+            line_shape="spline",
+            name=ticker
+        )
+    )
+
+    fig.update_layout(
+        height=350,
+        margin=dict(l=10, r=10, t=30, b=10),
+        xaxis_title="Time",
+        yaxis_title="Price",
+        yaxis=dict(autorange=True),
+        template="plotly_white"
+    )
+
+    return fig
+
+# ==============================
+# UI HEADER
+# ==============================
+st.title("📈 Professional Real-Time Stock Dashboard")
+
+search_input = st.text_input(
+    "Enter ticker(s) separated by space (example: bbca bbri aapl)",
+    value="bbca bbri"
+)
+
+tickers = [format_ticker(t) for t in search_input.split() if t.strip() != ""]
+
+# ==============================
+# TABS
+# ==============================
+tab1, tab2 = st.tabs(["Monitor", "Movers"])
+
+# =====================================================
+# TAB 1 - MONITOR
+# =====================================================
 with tab1:
-    search_q = st.text_input("Cari saham (misal: bbca bbri tlkm):", "BBCA BBRI")
-    tickers = search_q.split()
-    
-    if tickers:
-        for i in range(0, len(tickers), 3):
-            cols = st.columns(3)
-            for j in range(3):
-                idx = i + j
-                if idx < len(tickers):
-                    with cols[j]:
-                        prices, name = get_single_stock(tickers[idx])
-                        if prices is not None and len(prices) > 1:
-                            curr = float(prices.iloc[-1])
-                            # Hitung perubahan 5 menit
-                            prev = float(prices.iloc[-6]) if len(prices) >= 6 else float(prices.iloc[0])
-                            pct = ((curr - prev) / prev) * 100
-                            
-                            color = "#00FF41" if pct >= 0 else "#FF4B4B"
-                            
-                            fig = go.Figure(go.Scatter(
-                                x=prices.index, y=prices.values,
-                                mode='lines', line=dict(color=color, width=2, shape='spline')
-                            ))
-                            fig.update_layout(
-                                title=f"<b>{name}</b>: {curr:,.0f} ({pct:+.2f}%)",
-                                template="plotly_dark", height=250,
-                                yaxis=dict(autorange=True, side="right"),
-                                margin=dict(l=5, r=5, t=40, b=5)
-                            )
-                            st.plotly_chart(fig, use_container_width=True)
-                        else:
-                            st.warning(f"Data {tickers[idx]} tidak tersedia")
 
-# TAB 2: ANALYSIS
+    cols = st.columns(3)
+
+    for i, ticker in enumerate(tickers[:3]):
+        with cols[i]:
+            try:
+                df = fetch_data(ticker)
+
+                if df.empty:
+                    st.warning(f"No data for {ticker}")
+                    continue
+
+                latest_price, pct_change = calculate_change(df)
+
+                if latest_price is None:
+                    st.warning(f"Not enough data for {ticker}")
+                    continue
+
+                st.subheader(ticker)
+                st.metric(
+                    label="Current Price",
+                    value=f"{latest_price:.2f}",
+                    delta=f"{pct_change:.2f}% (5m)"
+                )
+
+                fig = plot_chart(df, ticker)
+                st.plotly_chart(fig, use_container_width=True)
+
+            except Exception:
+                st.error(f"Error loading {ticker}")
+
+# =====================================================
+# TAB 2 - MOVERS
+# =====================================================
 with tab2:
-    st.subheader("Top Movers (5 Menit Terakhir)")
-    if st.button("Refresh Analisis"):
-        st.rerun()
 
-    results = []
-    # Menggunakan spinner supaya user tahu sedang proses
-    with st.spinner("Mengambil data..."):
-        for t in WATCHLIST:
-            prices, name = get_single_stock(t)
-            if prices is not None and len(prices) >= 2:
-                curr = float(prices.iloc[-1])
-                prev = float(prices.iloc[-6]) if len(prices) >= 6 else float(prices.iloc[0])
-                diff = ((curr - prev) / prev) * 100
-                results.append({"Ticker": name, "Price": curr, "Chg_5m": diff})
+    st.subheader("Market Movers (5-Min Change)")
 
-    if results:
-        res_df = pd.DataFrame(results).sort_values(by="Chg_5m", ascending=False)
-        c1, c2 = st.columns(2)
-        with c1:
-            st.success("🚀 TOP GAINERS (5m)")
-            st.table(res_df.head(5).style.format({"Chg_5m": "{:+.2f}%", "Price": "{:,.0f}"}))
-        with c2:
-            st.error("📉 TOP LOSERS (5m)")
-            st.table(res_df.tail(5).sort_values(by="Chg_5m").style.format({"Chg_5m": "{:+.2f}%", "Price": "{:,.0f}"}))
-    else:
-        st.info("Tidak ada data. Pastikan market sedang buka atau gunakan saham yang valid.")
+    # Predefined Watchlist
+    watchlist = [
+        "BBCA.JK", "BBRI.JK", "TLKM.JK",
+        "BMRI.JK", "ASII.JK", "ADRO.JK",
+        "GOTO.JK", "ICBP.JK", "INDF.JK",
+        "UNTR.JK"
+    ]
+
+    movers = []
+
+    for ticker in watchlist:
+        try:
+            df = fetch_data(ticker)
+
+            if df.empty or len(df) < 6:
+                continue
+
+            latest_price = df["Close"].iloc[-1]
+            price_5m_ago = df["Close"].iloc[-6]
+            pct_change = ((latest_price - price_5m_ago) / price_5m_ago) * 100
+
+            movers.append({
+                "Ticker": ticker,
+                "Price": round(latest_price, 2),
+                "Change (%)": round(pct_change, 2)
+            })
+
+        except Exception:
+            continue
+
+    try:
+        movers_df = pd.DataFrame(movers)
+
+        if not movers_df.empty:
+            top_gainers = movers_df.sort_values(
+                by="Change (%)",
+                ascending=False
+            ).head(5)
+
+            top_losers = movers_df.sort_values(
+                by="Change (%)",
+                ascending=True
+            ).head(5)
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.subheader("🔥 Top 5 Gainers")
+                st.dataframe(top_gainers, use_container_width=True)
+
+            with col2:
+                st.subheader("🔻 Top 5 Losers")
+                st.dataframe(top_losers, use_container_width=True)
+
+        else:
+            st.warning("No movers data available.")
+
+    except Exception:
+        st.error("Error processing movers data.")
