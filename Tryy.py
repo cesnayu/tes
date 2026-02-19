@@ -1,94 +1,68 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+from datetime import date, timedelta
 
-st.set_page_config(layout="wide")
-st.title("📈 Stock Daily Return Dashboard")
+# Konfigurasi Halaman
+st.set_page_config(page_title="Dynamic Stock Dashboard", layout="wide")
 
-st.sidebar.header("Input Data")
-tickers_input = st.sidebar.text_input("Kode Saham (koma):", "BBCA.JK, TLKM.JK, ASII.JK")
-dates_input   = st.sidebar.text_input("Tanggal (YYYY-MM-DD):", "2024-02-01, 2024-02-05, 2024-02-12")
+st.title("📈 Stock Data Explorer")
 
-if st.sidebar.button("Proses Data"):
-    tickers      = [t.strip() for t in tickers_input.split(",")]
-    target_dates = [d.strip() for d in dates_input.split(",")]
+# --- SIDEBAR: INPUT DINAMIS ---
+st.sidebar.header("Filter Pencarian")
 
-    # Download satu per satu agar lebih stabil
-    all_data = {}
-    for t in tickers:
-        raw = yf.download(t, start="2024-01-20", end="2024-02-20", auto_adjust=True, progress=False)
+ticker = st.sidebar.text_input("Simbol Saham", value="BBCA.JK")
+
+# Mengatur default start_date ke 1 bulan lalu dan end_date ke hari ini
+default_start = date.today() - timedelta(days=60) 
+today = date.today()
+
+# User bebas memilih tanggal kapanpun lewat kalender
+start_date = st.sidebar.date_input("Dari Tanggal", value=default_start)
+end_date = st.sidebar.date_input("Sampai Tanggal", value=today)
+
+# --- PROSES DATA ---
+# Logic: Ambil data berdasarkan input kalender user
+if start_date <= end_date:
+    # Kita tarik datanya (End date +1 agar hari terakhir masuk hitungan)
+    data = yf.download(ticker, start=start_date, end=end_date + timedelta(days=1))
+    
+    if not data.empty:
+        # --- TABEL DATA ---
+        col1, col2 = st.columns([1, 2])
         
-        # Flatten kolom jika MultiIndex
-        if isinstance(raw.columns, pd.MultiIndex):
-            raw.columns = raw.columns.get_level_values(0)
+        with col1:
+            st.subheader("📍 Data Open & Close")
+            # Menampilkan data yang ditarik
+            display_df = data[['Open', 'Close']].copy()
+            # Format agar tanggal lebih enak dibaca
+            display_df.index = display_df.index.strftime('%d %B %Y')
+            st.dataframe(display_df, use_container_width=True)
+
+        with col2:
+            st.subheader("📊 Pergerakan Harga")
+            st.line_chart(data['Close'])
+
+        # --- FITUR PICKER TANGGAL SPESIFIK ---
+        st.divider()
+        st.subheader("🔍 Cari Tanggal Tertentu")
         
-        # Hapus timezone dari index
-        raw.index = raw.index.tz_localize(None) if raw.index.tz else raw.index
+        # Ambil semua list tanggal yang ada di data yang sudah di-download
+        all_dates = data.index.strftime('%Y-%m-%d').tolist()
         
-        # Simpan sebagai string YYYY-MM-DD
-        raw.index = raw.index.strftime("%Y-%m-%d")
-        
-        all_data[t] = raw
-
-    # Cek tanggal tersedia dari ticker pertama
-    sample_index = list(all_data[tickers[0]].index)
-
-    analysis_list = []
-
-    for d in target_dates:
-        if d in sample_index:
-            for t in tickers:
-                df = all_data[t]
-                open_  = float(df.loc[d, "Open"])
-                high   = float(df.loc[d, "High"])
-                close  = float(df.loc[d, "Close"])
-
-                # Hitung return: ambil close hari sebelumnya
-                idx_pos = sample_index.index(d)
-                if idx_pos > 0:
-                    prev_close = float(df.iloc[idx_pos - 1]["Close"])
-                    ret = ((close - prev_close) / prev_close) * 100
-                else:
-                    ret = 0.0
-
-                hvo = ((high - open_) / open_) * 100
-
-                analysis_list.append({
-                    "Ticker"          : t.replace(".JK", ""),
-                    "Tanggal"         : d,
-                    "Open"            : round(open_, 2),
-                    "High"            : round(high, 2),
-                    "High vs Open (%)": round(hvo, 2),
-                    "Close"           : round(close, 2),
-                    "Return (%)"      : round(ret, 2),
-                })
-        else:
-            st.warning(f"⚠️ {d} tidak tersedia (libur/pasar tutup).")
-
-    if analysis_list:
-        df_long  = pd.DataFrame(analysis_list)
-        pct_cols = ["High vs Open (%)", "Return (%)"]
-
-        st.write("### 📊 Tabel Performa Saham")
-        st.dataframe(
-            df_long.style
-                .highlight_max(axis=0, color="#1b5e20", subset=pct_cols)
-                .highlight_min(axis=0, color="#b71c1c", subset=pct_cols)
-                .format({
-                    "Open"            : "{:.2f}",
-                    "High"            : "{:.2f}",
-                    "Close"           : "{:.2f}",
-                    "High vs Open (%)": "{:.2f}%",
-                    "Return (%)"      : "{:.2f}%",
-                }),
-            use_container_width=True
+        selected = st.multiselect(
+            "Pilih tanggal spesifik (bisa pilih banyak):",
+            options=all_dates,
+            help="Ketik atau pilih tanggal, misal 2026-01-06 atau 2026-02-02"
         )
 
-        st.write("### 📉 Grafik High vs Open (%)")
-        st.bar_chart(df_long.pivot_table(index="Tanggal", columns="Ticker", values="High vs Open (%)"))
-
-        st.write("### 📉 Grafik Daily Return (%)")
-        st.bar_chart(df_long.pivot_table(index="Tanggal", columns="Ticker", values="Return (%)"))
-
+        if selected:
+            # Filter hanya yang dipilih user
+            filtered = data.loc[data.index.isin(selected)]
+            st.write(f"Hasil untuk {len(selected)} tanggal terpilih:")
+            st.table(filtered[['Open', 'Close']])
+            
     else:
-        st.error("Tidak ada data. Cek kode saham atau tanggal.")
+        st.warning("Data tidak tersedia untuk rentang tanggal ini. Coba cek apakah bursa sedang libur.")
+else:
+    st.error("Error: Tanggal 'Mulai' tidak boleh lebih besar dari tanggal 'Selesai'.")
