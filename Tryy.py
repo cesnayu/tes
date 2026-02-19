@@ -17,25 +17,47 @@ if st.sidebar.button("Proses Data"):
     try:
         raw = yf.download(tickers, start="2024-01-20", end="2024-02-20", auto_adjust=True, progress=False)
 
-        # Ambil masing-masing kolom
+        # === DEBUG: tampilkan info raw ===
+        st.write("**Raw columns:**", list(raw.columns))
+        st.write("**Raw index sample:**", raw.index[:3].tolist())
+        st.write("**Raw shape:**", raw.shape)
+        st.dataframe(raw.tail(5))
+
+        # Ambil kolom OHLC
         if isinstance(raw.columns, pd.MultiIndex):
-            df_close  = raw["Close"]
-            df_open   = raw["Open"]
-            df_high   = raw["High"]
+            df_close = raw["Close"].copy()
+            df_open  = raw["Open"].copy()
+            df_high  = raw["High"].copy()
         else:
-            df_close  = raw[["Close"]].rename(columns={"Close": tickers[0]})
-            df_open   = raw[["Open"]].rename(columns={"Open": tickers[0]})
-            df_high   = raw[["High"]].rename(columns={"High": tickers[0]})
+            # Hanya 1 ticker
+            df_close = raw[["Close"]].copy()
+            df_open  = raw[["Open"]].copy()
+            df_high  = raw[["High"]].copy()
+            df_close.columns = tickers
+            df_open.columns  = tickers
+            df_high.columns  = tickers
 
-        # Hitung daily return (Close hari ini vs Close kemarin)
-        returns = df_close.pct_change() * 100
+        # Normalisasi index — hapus timezone dulu baru format string
+        def normalize_index(df):
+            idx = pd.to_datetime(df.index)
+            if idx.tz is not None:
+                idx = idx.tz_localize(None)
+            df.index = idx.strftime("%Y-%m-%d")
+            return df
 
-        # Hitung persentase High vs Open: ((High - Open) / Open) * 100
+        df_close = normalize_index(df_close)
+        df_open  = normalize_index(df_open)
+        df_high  = normalize_index(df_high)
+
+        st.write("**Index setelah normalisasi:**", df_close.index.tolist())
+        st.write("**Target dates:**", target_dates)
+
+        # Cek kecocokan
+        for d in target_dates:
+            st.write(f"- `{d}` ada di index? → **{'✅ Ya' if d in df_close.index else '❌ Tidak'}**")
+
+        returns     = df_close.pct_change() * 100
         high_vs_open = ((df_high - df_open) / df_open) * 100
-
-        # Normalisasi index ke string YYYY-MM-DD
-        for frame in [df_close, df_open, df_high, returns, high_vs_open]:
-            frame.index = pd.to_datetime(frame.index).strftime("%Y-%m-%d")
 
         analysis_list = []
 
@@ -43,20 +65,20 @@ if st.sidebar.button("Proses Data"):
             if d in df_close.index:
                 for t in tickers:
                     try:
-                        close    = float(df_close.loc[d, t])
-                        open_    = float(df_open.loc[d, t])
-                        high     = float(df_high.loc[d, t])
-                        ret      = float(returns.loc[d, t])
-                        hvo_pct  = float(high_vs_open.loc[d, t])
+                        close   = float(df_close.loc[d, t])
+                        open_   = float(df_open.loc[d, t])
+                        high    = float(df_high.loc[d, t])
+                        ret     = float(returns.loc[d, t])
+                        hvo_pct = float(high_vs_open.loc[d, t])
 
                         analysis_list.append({
-                            "Ticker"         : t.replace(".JK", ""),
-                            "Tanggal"        : d,
-                            "Open"           : round(open_, 2),
-                            "High"           : round(high, 2),
+                            "Ticker"          : t.replace(".JK", ""),
+                            "Tanggal"         : d,
+                            "Open"            : round(open_, 2),
+                            "High"            : round(high, 2),
                             "High vs Open (%)": round(hvo_pct, 2),
-                            "Close"          : round(close, 2),
-                            "Return (%)"     : round(ret, 2),
+                            "Close"           : round(close, 2),
+                            "Return (%)"      : round(ret, 2),
                         })
                     except Exception as e:
                         st.warning(f"Error ambil data {t} pada {d}: {e}")
@@ -66,7 +88,6 @@ if st.sidebar.button("Proses Data"):
         if analysis_list:
             df_long = pd.DataFrame(analysis_list)
 
-            # === Tampilan Long Format (per baris = 1 saham 1 tanggal) ===
             st.write("### 📊 Tabel Detail per Saham per Tanggal")
             pct_cols = ["High vs Open (%)", "Return (%)"]
             st.dataframe(
@@ -74,21 +95,19 @@ if st.sidebar.button("Proses Data"):
                     .highlight_max(axis=0, color="#1b5e20", subset=pct_cols)
                     .highlight_min(axis=0, color="#b71c1c", subset=pct_cols)
                     .format({
-                        "Open"             : "{:.2f}",
-                        "High"             : "{:.2f}",
-                        "Close"            : "{:.2f}",
+                        "Open"            : "{:.2f}",
+                        "High"            : "{:.2f}",
+                        "Close"           : "{:.2f}",
                         "High vs Open (%)": "{:.2f}%",
-                        "Return (%)"       : "{:.2f}%",
+                        "Return (%)"      : "{:.2f}%",
                     }),
                 use_container_width=True
             )
 
-            # === Grafik High vs Open (%) ===
             st.write("### 📉 Grafik High vs Open (%)")
             chart_hvo = df_long.pivot_table(index="Tanggal", columns="Ticker", values="High vs Open (%)")
             st.bar_chart(chart_hvo)
 
-            # === Grafik Return (%) ===
             st.write("### 📉 Grafik Daily Return (%)")
             chart_ret = df_long.pivot_table(index="Tanggal", columns="Ticker", values="Return (%)")
             st.bar_chart(chart_ret)
@@ -98,4 +117,4 @@ if st.sidebar.button("Proses Data"):
 
     except Exception as e:
         st.error(f"❌ Error saat download data: {e}")
-        st.write("Pastikan koneksi internet aktif dan kode saham benar (contoh: BBCA.JK)")
+        st.exception(e)
