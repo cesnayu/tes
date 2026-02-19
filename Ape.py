@@ -88,7 +88,7 @@ with tab2:
                     p_p = float(t_df['Close'].iloc[p_idx])
                     pct = ((c_p - p_p) / p_p) * 100
                     
-                    analysis_list.append({"Ticker": t, "Price": c_p, "5m_Pct": pct})
+                    analysis_list.append({"Ticker": t, "Price": c_p, "5m_Pct": pct});
             except Exception:
                 # Jika satu saham error, lewati dan lanjut ke saham berikutnya
                 continue
