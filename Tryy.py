@@ -14,87 +14,87 @@ if st.sidebar.button("Proses Data"):
     tickers = [t.strip() for t in tickers_input.split(",")]
     target_dates = [d.strip() for d in dates_input.split(",")]
 
-    st.write("#### 🔍 Debug Info")
-    st.write(f"Tickers: `{tickers}`")
-    st.write(f"Target Dates: `{target_dates}`")
-
     try:
         raw = yf.download(tickers, start="2024-01-20", end="2024-02-20", auto_adjust=True, progress=False)
 
-        st.write(f"Kolom raw: `{list(raw.columns)}`")
-        st.write(f"Shape raw: `{raw.shape}`")
-
-        # Ambil kolom Close
+        # Ambil masing-masing kolom
         if isinstance(raw.columns, pd.MultiIndex):
-            df = raw["Close"]
+            df_close  = raw["Close"]
+            df_open   = raw["Open"]
+            df_high   = raw["High"]
         else:
-            df = raw[["Close"]]
-            df.columns = tickers
+            df_close  = raw[["Close"]].rename(columns={"Close": tickers[0]})
+            df_open   = raw[["Open"]].rename(columns={"Open": tickers[0]})
+            df_high   = raw[["High"]].rename(columns={"High": tickers[0]})
 
-        st.write("#### Preview data Close (sebelum format index):")
-        st.dataframe(df.tail(10))
-        st.write(f"Tipe index: `{type(df.index[0])}`")
-        st.write(f"Contoh nilai index: `{df.index[:3].tolist()}`")
+        # Hitung daily return (Close hari ini vs Close kemarin)
+        returns = df_close.pct_change() * 100
 
-        # Normalisasi index
-        df.index = pd.to_datetime(df.index).strftime("%Y-%m-%d")
-        returns = df.pct_change() * 100
+        # Hitung persentase High vs Open: ((High - Open) / Open) * 100
+        high_vs_open = ((df_high - df_open) / df_open) * 100
 
-        st.write("#### Index setelah normalisasi (5 terakhir):")
-        st.write(df.index[-5:].tolist())
+        # Normalisasi index ke string YYYY-MM-DD
+        for frame in [df_close, df_open, df_high, returns, high_vs_open]:
+            frame.index = pd.to_datetime(frame.index).strftime("%Y-%m-%d")
 
-        st.write("#### Cek apakah target_dates ada di index:")
-        for d in target_dates:
-            ada = d in df.index
-            st.write(f"- `{d}` → {'✅ Ada' if ada else '❌ Tidak Ada'}")
-
-        # Proses analisis
         analysis_list = []
+
         for d in target_dates:
-            if d in df.index:
+            if d in df_close.index:
                 for t in tickers:
                     try:
-                        price = df.loc[d, t]
-                        pct = returns.loc[d, t]
+                        close    = float(df_close.loc[d, t])
+                        open_    = float(df_open.loc[d, t])
+                        high     = float(df_high.loc[d, t])
+                        ret      = float(returns.loc[d, t])
+                        hvo_pct  = float(high_vs_open.loc[d, t])
+
                         analysis_list.append({
-                            "Ticker": t.replace(".JK", ""),
-                            "Tanggal": d,
-                            "Harga": round(float(price), 2),
-                            "Return (%)": round(float(pct), 2)
+                            "Ticker"         : t.replace(".JK", ""),
+                            "Tanggal"        : d,
+                            "Open"           : round(open_, 2),
+                            "High"           : round(high, 2),
+                            "High vs Open (%)": round(hvo_pct, 2),
+                            "Close"          : round(close, 2),
+                            "Return (%)"     : round(ret, 2),
                         })
                     except Exception as e:
                         st.warning(f"Error ambil data {t} pada {d}: {e}")
             else:
-                st.warning(f"⚠️ Tanggal {d} tidak ada di data (libur/pasar tutup).")
+                st.warning(f"⚠️ Tanggal {d} tidak tersedia (hari libur/pasar tutup).")
 
         if analysis_list:
             df_long = pd.DataFrame(analysis_list)
 
-            df_pivot = df_long.pivot(index="Ticker", columns="Tanggal", values=["Harga", "Return (%)"])
-
-            cols = []
-            for d in target_dates:
-                if d in df.index:
-                    cols.append(("Harga", d))
-                    cols.append(("Return (%)", d))
-
-            df_final = df_pivot.reindex(columns=cols)
-            df_final.columns = [f"{c[0]} ({c[1]})" for c in df_final.columns]
-
-            st.write("### 📊 Tabel Performa Saham")
-            return_cols = [c for c in df_final.columns if "Return" in c]
+            # === Tampilan Long Format (per baris = 1 saham 1 tanggal) ===
+            st.write("### 📊 Tabel Detail per Saham per Tanggal")
+            pct_cols = ["High vs Open (%)", "Return (%)"]
             st.dataframe(
-                df_final.style.highlight_max(axis=0, color="#2e7d32", subset=return_cols)
-                              .highlight_min(axis=0, color="#c62828", subset=return_cols)
-                              .format("{:.2f}")
+                df_long.style
+                    .highlight_max(axis=0, color="#1b5e20", subset=pct_cols)
+                    .highlight_min(axis=0, color="#b71c1c", subset=pct_cols)
+                    .format({
+                        "Open"             : "{:.2f}",
+                        "High"             : "{:.2f}",
+                        "Close"            : "{:.2f}",
+                        "High vs Open (%)": "{:.2f}%",
+                        "Return (%)"       : "{:.2f}%",
+                    }),
+                use_container_width=True
             )
 
-            st.write("### 📉 Grafik Return (%)")
-            return_data = df_long.pivot(index="Tanggal", columns="Ticker", values="Return (%)")
-            st.bar_chart(return_data)
+            # === Grafik High vs Open (%) ===
+            st.write("### 📉 Grafik High vs Open (%)")
+            chart_hvo = df_long.pivot_table(index="Tanggal", columns="Ticker", values="High vs Open (%)")
+            st.bar_chart(chart_hvo)
+
+            # === Grafik Return (%) ===
+            st.write("### 📉 Grafik Daily Return (%)")
+            chart_ret = df_long.pivot_table(index="Tanggal", columns="Ticker", values="Return (%)")
+            st.bar_chart(chart_ret)
 
         else:
-            st.error("Tidak ada data yang berhasil diproses.")
+            st.error("Tidak ada data yang berhasil diproses. Cek tanggal atau kode saham.")
 
     except Exception as e:
         st.error(f"❌ Error saat download data: {e}")
