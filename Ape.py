@@ -89,3 +89,15 @@ with tab2:
                     pct = ((c_p - p_p) / p_p) * 100
                     
                     analysis_list.append({"Ticker": t, "Price": c_p, "5m_Pct": pct})
+            except:
+                continue
+
+    if analysis_list:
+        res_df = pd.DataFrame(analysis_list).sort_values(by="5m_Pct", ascending=False)
+        c1, c2 = st.columns(2)
+        with c1:
+            st.success("🚀 TOP GAINERS (5m)")
+            st.table(res_df.head(5).style.format({"5m_Pct": "{:+.2f}%", "Price": "{:,.0f}"}))
+        with c2:
+            st.error("📉 TOP LOSERS (5m)")
+            st.table(res_df.tail(5).sort_values(by="5m_Pct").style.format({"5m_Pct": "{:+.2f}%", "Price": "{:,.0f}"}))
