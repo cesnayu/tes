@@ -1,82 +1,56 @@
+import streamlit as st
 import yfinance as yf
 import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
 
-# 1. Daftar ratusan saham IHSG (Top 200+ Liquid & Market Cap)
-tickers = [
-    "AALI.JK", "ABMM.JK", "ACES.JK", "ADCP.JK", "ADES.JK", "ADHI.JK", "ADMR.JK", "ADRO.JK",
-    "AGII.JK", "AKRA.JK", "AMMN.JK", "AMRT.JK", "ANTM.JK", "ARTO.JK", "ASII.JK", "ASRI.JK",
-    "AVIA.JK", "BBCA.JK", "BBNI.JK", "BBRI.JK", "BBTN.JK", "BDMN.JK", "BFIN.JK", "BIRD.JK",
-    "BMRI.JK", "BMTR.JK", "BNGA.JK", "BRIS.JK", "BRMS.JK", "BRPT.JK", "BSDE.JK", "BTPS.JK",
-    "BUKA.JK", "BUMI.JK", "BYAN.JK", "CPIN.JK", "CTRA.JK", "CUAN.JK", "DMAS.JK", "DOID.JK",
-    "DSNG.JK", "DSSA.JK", "ELSA.JK", "EMTK.JK", "ENRG.JK", "ERAA.JK", "ESSA.JK", "EXCL.JK",
-    "GGRM.JK", "GOTO.JK", "HEAL.JK", "HMSP.JK", "HRUM.JK", "ICBP.JK", "INCO.JK", "INDF.JK",
-    "INDY.JK", "INKP.JK", "INTP.JK", "ISAT.JK", "ITMG.JK", "JPFA.JK", "JSMR.JK", "KLBF.JK",
-    "LPKR.JK", "LSIP.JK", "MAPI.JK", "MBMA.JK", "MDKA.JK", "MEDC.JK", "MIKA.JK", "MNCN.JK",
-    "MTEL.JK", "MYOR.JK", "PGAS.JK", "PGEO.JK", "PNLF.JK", "PTBA.JK", "PTPP.JK", "PWON.JK",
-    "SCMA.JK", "SIDO.JK", "SMGR.JK", "SMRA.JK", "TINS.JK", "TLKM.JK", "TOWR.JK", "TPIA.JK",
-    "UNTR.JK", "UNVR.JK", "WIKA.JK", "WSKT.JK" 
-    # Anda bisa menambahkan kode saham lainnya di sini dengan akhiran .JK
-]
+st.set_page_config(layout="wide")
+st.title("IHSG Stock MA Scanner")
 
-def calculate_ma_dashboard(ticker_list):
-    print(f"Sedang mengambil data untuk {len(ticker_list)} saham...")
+# 1. List Saham (Bisa kamu tambah sampai ratusan)
+tickers = ["BBCA.JK", "BBRI.JK", "BMRI.JK", "TLKM.JK", "ASII.JK", "GOTO.JK", "ADRO.JK", "UNVR.JK", "ICBP.JK", "AMMN.JK"] 
+# Tips: Untuk ratusan saham, kamu bisa load dari file CSV atau list lengkap IHSG
+
+@st.cache_data
+def get_stock_data(list_ticker):
+    all_results = []
+    # Ambil data 1.5 tahun agar MA200 aman terhitung
+    data = yf.download(list_ticker, period="2y", group_by='ticker', progress=False)
     
-    # Ambil data historis 1 tahun terakhir (agar cukup untuk MA 200)
-    start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
-    data = yf.download(ticker_list, start=start_date, group_by='ticker', progress=True)
-    
-    results = []
-    
-    for ticker in ticker_list:
+    for ticker in list_ticker:
         try:
-            # Pastikan ticker ada di data dan tidak kosong
-            if ticker not in data.columns.levels[0]: continue
             df = data[ticker].dropna()
-            if len(df) < 200: continue
-            
-            # Harga Terakhir
             current_price = df['Close'].iloc[-1]
             
-            # Hitung MA
-            ma20 = df['Close'].rolling(window=20).mean().iloc[-1]
-            ma60 = df['Close'].rolling(window=60).mean().iloc[-1]
-            ma120 = df['Close'].rolling(window=120).mean().iloc[-1]
-            ma200 = df['Close'].rolling(window=200).mean().iloc[-1]
+            # Hitung Moving Average
+            ma_list = [20, 60, 120, 200]
+            row = {'Ticker': ticker.replace('.JK', ''), 'Price': current_price}
             
-            # Hitung % Jarak (Distance)
-            dist20 = ((current_price - ma20) / ma20) * 100
-            dist60 = ((current_price - ma60) / ma60) * 100
-            dist120 = ((current_price - ma120) / ma120) * 100
-            dist200 = ((current_price - ma200) / ma200) * 100
+            for ma in ma_list:
+                ma_val = df['Close'].rolling(window=ma).mean().iloc[-1]
+                # Hitung Persentase Jarak
+                dist = ((current_price - ma_val) / ma_val) * 100
+                row[f'MA {ma}'] = round(ma_val, 2)
+                row[f'% Dist MA{ma}'] = round(dist, 2)
             
-            results.append({
-                'Ticker': ticker.replace('.JK', ''),
-                'Price': round(current_price, 0),
-                'MA 20': round(ma20, 2),
-                'MA 60': round(ma60, 2),
-                'MA 120': round(ma120, 2),
-                'MA 200': round(ma200, 2),
-                '% Dist MA20': round(dist20, 2),
-                '% Dist MA60': round(dist60, 2),
-                '% Dist MA120': round(dist120, 2),
-                '% Dist MA200': round(dist200, 2)
-            })
-        except Exception as e:
+            all_results.append(row)
+        except:
             continue
+    return pd.DataFrame(all_results)
 
-    return pd.DataFrame(results)
+# 2. Proses Data
+with st.spinner('Mengambil data dari Yahoo Finance...'):
+    df_result = get_stock_data(tickers)
 
-# Eksekusi
-df_dashboard = calculate_ma_dashboard(tickers)
+# 3. Tampilkan Tabel
+st.write(f"Menampilkan {len(df_result)} saham")
 
-# Sorting berdasarkan saham yang paling dekat dengan MA 200 (misalnya)
-df_dashboard = df_dashboard.sort_values(by='% Dist MA200', ascending=True)
+# Tambahkan fitur coloring: Hijau jika di atas MA, Merah jika di bawah MA
+def color_dist(val):
+    color = 'green' if val > 0 else 'red'
+    return f'color: {color}'
 
-# Simpan ke Excel/CSV
-df_dashboard.to_csv('Dashboard_MA_IHSG.csv', index=False)
-
-# Tampilkan 20 teratas
-print("\n=== DASHBOARD JARAK HARGA KE MOVING AVERAGE ===")
-print(df_dashboard.head(20).to_string(index=False))
+# Tampilkan tabel dengan sorting & highlight
+st.dataframe(
+    df_result.style.applymap(color_dist, subset=[col for col in df_result.columns if '% Dist' in col]),
+    use_container_width=True,
+    height=600
+)
