@@ -1,51 +1,58 @@
 import yfinance as yf
 import pandas as pd
 
-# Daftar saham (Pastikan pakai .JK)
+# List Saham
 tickers = ['BBCA.JK', 'BBRI.JK', 'BMRI.JK', 'TLKM.JK', 'ASII.JK', 'GOTO.JK']
 
-def get_ma_dashboard(stock_list):
-    summary = []
+def create_dashboard():
+    all_data = []
     
-    for ticker in stock_list:
+    print("Sedang mengambil data, mohon tunggu...")
+    
+    for t in tickers:
         try:
-            # Ambil data 2 tahun (supaya MA200 pasti terhitung)
-            df = yf.download(ticker, period='2y', interval='1d', progress=False)
+            # Menggunakan period 2 tahun supaya MA200 pasti muncul
+            # auto_adjust=True membantu menormalkan kolom Close
+            df = yf.download(t, period='2y', auto_adjust=True, progress=False)
             
-            if df.empty or len(df) < 200:
-                print(f"Data {ticker} tidak cukup atau tidak ditemukan.")
+            if df.empty:
+                print(f"Data untuk {t} kosong (Check koneksi/ticker)")
                 continue
-            
-            # Memastikan kolom adalah satu lapis (Menghindari Multi-Index)
+
+            # Perbaikan krusial: Meratakan kolom jika ada multi-index
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
+
+            # Menghitung MA
+            ma_windows = [20, 60, 120, 200]
+            last_close = float(df['Close'].iloc[-1])
             
-            # Ambil kolom Close
-            close_prices = df['Close']
-            last_price = float(close_prices.iloc[-1])
+            res = {'Ticker': t, 'Price': round(last_close, 2)}
             
-            # Hitung MA
-            ma_list = [20, 60, 120, 200]
-            row = {'Ticker': ticker, 'Price': round(last_price, 2)}
-            
-            for ma in ma_list:
-                ma_val = float(close_prices.rolling(window=ma).mean().iloc[-1])
-                dist = ((last_price - ma_val) / ma_val) * 100
+            for window in ma_windows:
+                ma_val = df['Close'].rolling(window=window).mean().iloc[-1]
                 
-                row[f'MA{ma}'] = round(ma_val, 2)
-                row[f'% Dist {ma}'] = f"{dist:+.2f}%"
-                
-            summary.append(row)
+                if pd.isna(ma_val):
+                    res[f'MA{window}'] = "N/A"
+                    res[f'% Dist {window}'] = "N/A"
+                else:
+                    dist = ((last_close - ma_val) / ma_val) * 100
+                    res[f'MA{window}'] = round(ma_val, 2)
+                    res[f'% Dist {window}'] = f"{dist:+.2f}%"
+            
+            all_data.append(res)
+            print(f"Berhasil mengambil data: {t}")
             
         except Exception as e:
-            print(f"Error pada {ticker}: {e}")
-            
-    return pd.DataFrame(summary)
+            print(f"Gagal mengambil {t}: {str(e)}")
 
-# Jalankan
-df_hasil = get_ma_dashboard(tickers)
+    # Membuat DataFrame
+    if not all_data:
+        print("\nFATAL: Semua data gagal diambil. Coba ganti koneksi internet/Hotspot.")
+    else:
+        df_final = pd.DataFrame(all_data)
+        print("\n--- STOCK MA DASHBOARD ---")
+        print(df_final.to_string(index=False))
 
-if df_hasil.empty:
-    print("Dashboard Kosong. Cek koneksi internet atau simbol ticker.")
-else:
-    print(df_hasil.to_string(index=False))
+if __name__ == "__main__":
+    create_dashboard()
