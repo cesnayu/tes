@@ -1,70 +1,126 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import calendar
-from datetime import datetime, timedelta
+import numpy as np
+import datetime
 
-st.set_page_config(page_title="Tabel Fluktuasi Saham", layout="wide")
+# --- PENGATURAN HALAMAN DASHBOARD ---
+st.set_page_config(page_title="IDX Screener Dashboard", layout="wide")
+st.title("📈 Dashboard Tarik Data Saham IDX")
+st.write("Menampilkan perhitungan metrik 1 bulan terakhir dan filter saham Uptrend.")
 
-st.title("Tabel Persentase Rentang Harian Saham (High vs Low)")
-st.write("Menampilkan persentase selisih harga High dan Low harian: `((High - Low) / Low) * 100%`")
+# --- FUNGSI UNTUK MENDAPATKAN DAFTAR SAHAM ---
+@st.cache_data
+def get_tickers():
+    # --- OPSI 1: Contoh saham untuk uji coba cepat ---
+    tickers = ["BREN.JK", "BBCA.JK", "DSSA.JK", "BBRI.JK", "TPIA.JK", "DCII.JK", "BYAN.JK", "AMMN.JK", "BMRI.JK", "TLKM.JK", "ASII.JK", "MORA.JK", "SRAJ.JK", "CUAN.JK", "BRPT.JK", "BBNI.JK", "PANI.JK", "BNLI.JK", "BRMS.JK", "CDIA.JK", "DNET.JK", "IMPC.JK", "FILM.JK", "MPRO.JK", "BRIS.JK", "ICBP.JK", "HMSP.JK", "BUMI.JK", "EMAS.JK", "UNTR.JK", "ANTM.JK", "NCKL.JK", "SMMA.JK", "ADMR.JK", "CASA.JK", "UNVR.JK", "RISE.JK", "CPIN.JK", "MLPT.JK", "AMRT.JK", "MDKA.JK", "ISAT.JK", "MBMA.JK", "GOTO.JK", "INCO.JK", "AADI.JK", "INDF.JK", "PTRO.JK", "BELI.JK", "ADRO.JK", "EXCL.JK", "TCPI.JK", "KLBF.JK", "EMTK.JK", "MYOR.JK", "PGAS.JK", "INKP.JK", "PGUN.JK", "PGEO.JK", "GEMS.JK", "MTEL.JK", "BNGA.JK", "CMRY.JK", "ARCI.JK", "TBIG.JK", "MEGA.JK", "SILO.JK", "MEDC.JK", "GIAA.JK", "SOHO.JK", "VKTR.JK", "CBDK.JK", "MIKA.JK", "NISP.JK", "JPFA.JK", "GGRM.JK", "TOWR.JK", "BBHI.JK", "ENRG.JK", "TAPG.JK", "SUPA.JK", "BUVA.JK", "PTBA.JK", "BINA.JK", "COIN.JK", "AVIA.JK", "JSMR.JK", "AKRA.JK", "NSSS.JK", "PNBN.JK", "ITMG.JK", "BDMN.JK", "ARKO.JK", "MDIY.JK", "TINS.JK", "BSIM.JK", "INTP.JK", "JARR.JK", "BKSL.JK", "BTPN.JK", "ARTO.JK", "FAPA.JK", "MKPI.JK", "RMKE.JK", "SRTG.JK", "TKIM.JK", "MAPA.JK", "MSIN.JK", "MAPI.JK", "RLCO.JK", "HEAL.JK", "BSDE.JK", "KPIG.JK", "CITA.JK", "PWON.JK", "BNBR.JK", "APIC.JK", "BBTN.JK", "SMGR.JK", "RAJA.JK", "POLU.JK", "LIFE.JK", "BNII.JK", "INDY.JK", "CTRA.JK", "SMAR.JK", "SCMA.JK", "SSMS.JK", "CARE.JK", "ULTJ.JK", "SIDO.JK", "DSNG.JK", "BBSI.JK", "BUKA.JK", "AALI.JK", "RATU.JK", "BBKP.JK", "HRUM.JK", "CMNT.JK", "SGRO.JK", "PSAB.JK", "JRPT.JK", "YUPI.JK", "STAA.JK", "STTP.JK", "GOOD.JK", "MCOL.JK", "WIFI.JK", "AUTO.JK", "TSPC.JK", "NICL.JK", "ALII.JK", "SHIP.JK", "MLBI.JK", "PACK.JK", "DEWA.JK", "CYBR.JK", "PRAY.JK", "POWR.JK", "ESSA.JK", "BMAS.JK", "MIDI.JK", "EDGE.JK", "BIPI.JK", "BSSR.JK", "SMSM.JK", "ADMF.JK", "ELPI.JK", "BFIN.JK", "HRTA.JK", "CLEO.JK", "BTPS.JK", "CMNP.JK", "CNMA.JK", "BANK.JK", "ADES.JK", "INPP.JK", "BJBR.JK", "SIMP.JK", "BJTM.JK", "PNLF.JK", "INET.JK", "SINI.JK", "TLDN.JK", "GMFI.JK", "NATO.JK", "BBMD.JK", "LSIP.JK", "TMAS.JK", "ABMM.JK", "DUTI.JK", "BHAT.JK", "DAAZ.JK", "SGER.JK", "DMND.JK", "CLAY.JK", "IBST.JK", "MTDL.JK", "BULL.JK", "ACES.JK", "LPKR.JK", "DMAS.JK", "SMRA.JK", "SSIA.JK", "ERAA.JK", "EPMT.JK", "SMDR.JK", "KRAS.JK", "JSPT.JK", "BOGA.JK", "MAYA.JK", "AGII.JK", "OMED.JK", "PALM.JK", "ANJT.JK", "TOBA.JK", "DATA.JK", "BESS.JK", "INDS.JK", "CASS.JK", "ELSA.JK", "AGRO.JK", "SAME.JK", "UANG.JK", "MNCN.JK", "LINK.JK", "BPII.JK", "YULE.JK", "TRIN.JK", "BALI.JK", "UDNG.JK", "PBSA.JK", "CTBN.JK", "DRMA.JK", "NIRO.JK", "DKFT.JK", "GTSI.JK", "MTLA.JK", "BBYB.JK", "TFCO.JK", "ROTI.JK", "FISH.JK", "TRIM.JK", "PYFA.JK", "TGKA.JK", "GOLF.JK", "KIJA.JK", "JTPE.JK", "MASB.JK", "HUMI.JK", "FORE.JK", "MPMX.JK", "RDTX.JK", "MSTI.JK", "BSWD.JK", "IMAS.JK", "BIRD.JK", "LPCK.JK", "ASSA.JK", "TUGU.JK", "BWPT.JK", "WIIM.JK", "RONY.JK", "LPPF.JK", "CENT.JK", "SDRA.JK", "SURE.JK", "VICI.JK", "MGLV.JK", "NOBU.JK", "KEEN.JK", "PSGO.JK", "AMAR.JK", "CPRO.JK", "CBRE.JK", "SOCI.JK", "ARNA.JK", "TBLA.JK", "STAR.JK", "GJTL.JK", "VICO.JK", "PBID.JK", "INPC.JK", "GGRP.JK", "IRSX.JK", "AGRS.JK", "HEXA.JK", "TOTL.JK", "UNIC.JK", "SMMT.JK", "BUKK.JK", "ROCK.JK", "SKRN.JK", "MDLA.JK", "MMLP.JK", "MINA.JK", "BACA.JK", "MAPB.JK", "KEJU.JK", "BGTG.JK", "SOTS.JK", "MBSS.JK", "SAMF.JK", "BHIT.JK", "ARGO.JK", "CBUT.JK", "PNIN.JK", "MARK.JK", "SMDM.JK", "ISSP.JK", "FPNI.JK", "APLN.JK", "MYOH.JK", "ASRI.JK", "SMIL.JK", "DAYA.JK", "KAEF.JK", "IFSH.JK", "BNBA.JK", "RALS.JK", "JAWA.JK", "MCOR.JK", "PKPK.JK", "HATM.JK", "TOTO.JK", "BCIC.JK", "IATA.JK", "MAHA.JK", "FOLK.JK", "SMBR.JK", "SFAN.JK", "BISI.JK", "BABP.JK", "FUTR.JK", "PSKT.JK", "OASA.JK", "ASLI.JK", "SSTM.JK", "SIPD.JK", "MGRO.JK", "PORT.JK", "DNAR.JK", "MKAP.JK", "BVIC.JK", "BOLT.JK", "PNGO.JK", "IPCC.JK", "BLTZ.JK", "ASGR.JK", "POLI.JK", "DWGL.JK", "BMTR.JK", "GMTD.JK", "WINS.JK", "IFII.JK", "MSJA.JK", "BCAP.JK", "OMRE.JK", "BEEF.JK", "KMTR.JK", "NICE.JK", "BKSW.JK", "PRDA.JK", "DOID.JK", "TRUE.JK", "BLUE.JK", "MDIA.JK", "WOOD.JK", "ACST.JK", "IMJS.JK", "AMAG.JK", "PTPP.JK", "MTMH.JK", "CSRA.JK", "MLIA.JK", "ITMA.JK", "DGWG.JK", "KETR.JK", "NRCA.JK", "DMMX.JK", "SCCO.JK", "INDR.JK", "PNBS.JK", "BRAM.JK", "LUCY.JK", "MBAP.JK", "TPMA.JK", "ELTY.JK", "IPTV.JK", "STRK.JK", "TEBE.JK", "ADHI.JK", "LPGI.JK", "SUNI.JK", "HILL.JK", "PSSI.JK", "MINE.JK", "FAST.JK", "DVLA.JK", "ERAL.JK", "HERO.JK", "KINO.JK", "CSAP.JK", "UCID.JK", "IPCM.JK", "MLPL.JK", "VISI.JK", "PTSN.JK", "BBRM.JK", "SPTO.JK", "FMII.JK", "PPRE.JK", "MAIN.JK", "AYAM.JK", "EURO.JK", "SKLT.JK", "DEPO.JK", "BSBK.JK", "MKTR.JK", "BMHS.JK", "NEST.JK", "PMJS.JK", "BEKS.JK", "KKGI.JK", "DLTA.JK", "AMFG.JK", "RAAM.JK", "TRGU.JK", "ALDO.JK", "GWSA.JK", "PSAT.JK", "GSMF.JK", "CARS.JK", "PADI.JK", "BBLD.JK", "DOOH.JK", "ABDA.JK", "BELL.JK", "NETV.JK", "MERK.JK", "BLOG.JK", "DILD.JK", "TAMU.JK", "CEKA.JK", "ATIC.JK", "TRST.JK", "SONA.JK", "BBSS.JK", "KBLI.JK", "BLES.JK", "CFIN.JK", "JKON.JK", "TIFA.JK", "CAMP.JK", "RANC.JK", "MITI.JK", "TCID.JK", "WSBP.JK", "GZCO.JK", "AISA.JK", "CITY.JK", "JIHD.JK", "LTLS.JK", "IBOS.JK", "ADCP.JK", "ARTA.JK", "BUAH.JK", "INDO.JK", "WOMF.JK", "BEST.JK", "PANS.JK", "TBMS.JK", "ENAK.JK", "RSCH.JK", "BLTA.JK", "JGLE.JK", "MTWI.JK", "ARII.JK", "BTEK.JK", "AREA.JK", "BOLA.JK", "SHID.JK", "ZINC.JK", "ASLC.JK", "PEVE.JK", "LIVE.JK", "MMIX.JK", "GHON.JK", "CHIP.JK", "WIRG.JK", "GDST.JK", "PBRX.JK", "GRIA.JK", "ATAP.JK", "CMPP.JK", "NELY.JK", "RMKO.JK", "NICK.JK", "SMGA.JK", "SPMA.JK", "RELI.JK", "HGII.JK", "BUDI.JK", "SKBM.JK", "COCO.JK", "LEAD.JK", "VOKS.JK", "PDPP.JK", "MHKI.JK", "NFCX.JK", "PTPW.JK", "PJAA.JK", "ZATA.JK", "NIKL.JK", "FUJI.JK", "AMOR.JK", "PANR.JK", "ADMG.JK", "MGNA.JK", "TALF.JK", "AMAN.JK", "BABY.JK", "MTFN.JK", "WTON.JK", "IPOL.JK", "SULI.JK", "PMUI.JK", "KSIX.JK", "PADA.JK", "LFLO.JK", "BPFI.JK", "JECC.JK", "FORU.JK", "HDFA.JK", "KOKA.JK", "BDKR.JK", "DGIK.JK", "WMUU.JK", "PGJO.JK", "RODA.JK", "KDSI.JK", "AXIO.JK", "TIRA.JK", "MDLN.JK", "MOLI.JK", "BEER.JK", "HOKI.JK", "BRNA.JK", "GTBO.JK", "BIKE.JK", "UNIQ.JK", "MPPA.JK", "APEX.JK", "AHAP.JK", "GTRA.JK", "SWID.JK", "IKBI.JK", "HOMI.JK", "HOPE.JK", "EKAD.JK", "VIVA.JK", "UNSP.JK", "PEGE.JK", "PZZA.JK", "SOFA.JK", "IRRA.JK", "ELIT.JK", "WEGE.JK", "SOSS.JK", "AWAN.JK", "SMKL.JK", "GLVA.JK", "TRIS.JK", "KOTA.JK", "GUNA.JK", "HAIS.JK", "UNTD.JK", "CHEK.JK", "LABS.JK", "BOAT.JK", "PNSE.JK", "MREI.JK", "FITT.JK", "KONI.JK", "VTNY.JK", "URBN.JK", "TRON.JK", "IDPR.JK", "WINE.JK", "DART.JK", "PJHB.JK", "GPRA.JK", "MDKI.JK", "KING.JK", "CNKO.JK", "UFOE.JK", "BSML.JK", "VERN.JK", "HALO.JK", "COAL.JK", "APLI.JK", "CRAB.JK", "ESTA.JK", "SURI.JK", "MDRN.JK", "MAXI.JK", "KMDS.JK", "CLPI.JK", "BAYU.JK", "VRNA.JK", "TIRT.JK", "IGAR.JK", "LAPD.JK", "IKPM.JK", "SCNP.JK", "MCAS.JK", "REAL.JK", "RIGS.JK", "CCSI.JK", "GDYR.JK", "GULA.JK", "NASA.JK", "PDES.JK", "CSIS.JK", "GOLD.JK", "PTPS.JK", "CBPE.JK", "SOLA.JK", "TYRE.JK", "ZONE.JK", "BIPP.JK", "BKDP.JK", "ESTI.JK", "IOTF.JK", "LPLI.JK", "VAST.JK", "HYGN.JK", "ASRM.JK", "KREN.JK", "SMLE.JK", "DYAN.JK", "DGNS.JK", "EAST.JK", "HAJJ.JK", "TFAS.JK", "SRSN.JK", "JATI.JK", "KBLM.JK", "DADA.JK", "BMSR.JK", "KOBX.JK", "NAIK.JK", "KBAG.JK", "TARA.JK", "SATU.JK", "ASPR.JK", "ASHA.JK", "YOII.JK", "UVCR.JK", "CRSN.JK", "YPAS.JK", "TRUS.JK", "ATLA.JK", "INTA.JK", "ERTX.JK", "GPSO.JK", "PART.JK", "MUTU.JK", "SAFE.JK", "KLAS.JK", "AKPI.JK", "ITIC.JK", "CGAS.JK", "EMDE.JK", "MICE.JK", "VINS.JK", "ASMI.JK", "HRME.JK", "BPTR.JK", "AMIN.JK", "ASPI.JK", "IKAI.JK", "BINO.JK", "SAGE.JK", "TOSK.JK", "BTON.JK", "OKAS.JK", "MPXL.JK", "WGSH.JK", "ACRO.JK", "AGAR.JK", "INOV.JK", "POLA.JK", "LMPI.JK", "FIRE.JK", "ANDI.JK", "PUDP.JK", "DOSS.JK", "FWCT.JK", "AKSI.JK", "CASH.JK", "KBLV.JK", "PRIM.JK", "NTBK.JK", "DEWI.JK", "OBAT.JK", "ASJT.JK", "ALKA.JK", "ECII.JK", "RELF.JK", "LCKM.JK", "PEHA.JK", "AKKU.JK", "ENZO.JK", "AYLS.JK", "INPS.JK", "BAJA.JK", "WINR.JK", "ASDM.JK", "SDPC.JK", "TRJA.JK", "SAPX.JK", "WAPO.JK", "PTMP.JK", "BAUT.JK", "MEJA.JK", "JMAS.JK", "LPPS.JK", "OBMD.JK", "NPGF.JK", "NZIA.JK", "MANG.JK", "LION.JK", "TAXI.JK", "PTSP.JK", "APII.JK", "CAKK.JK", "NANO.JK", "SLIS.JK", "DFAM.JK", "WOWS.JK", "SDMU.JK", "CINT.JK", "ZYRX.JK", "DKHH.JK", "MRAT.JK", "ABBA.JK", "BOBA.JK", "DIVA.JK", "PURA.JK", "MARI.JK", "PAMG.JK", "BAPI.JK", "CANI.JK", "KOPI.JK", "DSFI.JK", "SMKM.JK", "WEHA.JK", "PURI.JK", "LPIN.JK", "IBFN.JK", "RUIS.JK", "NAYZ.JK", "LAJU.JK", "TRUK.JK", "LAND.JK", "KARW.JK", "HELI.JK", "CHEM.JK", "SEMA.JK", "PSDN.JK", "IPAC.JK", "SNLK.JK", "INTD.JK", "MSKY.JK", "MBTO.JK", "KRYA.JK", "ASBI.JK", "INCI.JK", "TMPO.JK", "GEMA.JK", "ISAP.JK", "YELO.JK", "MERI.JK", "PTIS.JK", "ISEA.JK", "FOOD.JK", "LABA.JK", "MPIX.JK", "RGAS.JK", "DEFI.JK", "KUAS.JK", "SBMA.JK", "EPAC.JK", "RCCC.JK", "KIOS.JK", "INAI.JK", "RBMS.JK", "MIRA.JK", "NASI.JK", "MEDS.JK", "CSMI.JK", "CTTH.JK", "OLIV.JK", "JAST.JK", "IDEA.JK", "OPMS.JK", "PTDU.JK", "PGLI.JK", "FLMC.JK", "BCIP.JK", "INCF.JK", "HDIT.JK", "JAYA.JK", "AIMS.JK", "RUNS.JK", "POLY.JK", "OILS.JK", "BATA.JK", "KOIN.JK", "ICON.JK", "LRNA.JK", "MPOW.JK", "PICO.JK", "IKAN.JK", "TAYS.JK", "ESIP.JK", "KJEN.JK", "LUCK.JK", "TNCA.JK", "KICI.JK", "SOUL.JK", "ARKA.JK", "PLAN.JK", "BMBL.JK", "BAPA.JK", "RICY.JK", "WIDI.JK", "DIGI.JK", "INDX.JK", "HADE.JK", "TAMA.JK", "PCAR.JK", "LOPI.JK", "GRPH.JK", "HBAT.JK", "PIPA.JK", "KLIN.JK", "PPRI.JK", "AEGS.JK", "SPRE.JK", "KAQI.JK", "NINE.JK", "KOCI.JK", "LMAX.JK", "BRRC.JK", "RAFI.JK", "TOOL.JK", "BATR.JK", "AMMS.JK", "KKES.JK", "SICO.JK", "BAIK.JK", "GRPM.JK", "KDTN.JK", "MSIE.JK"
+]
+    
+    # --- OPSI 2: Jika kamu punya file CSV berisi 800 saham ---
+    # Jika kamu punya file 'saham_idx.csv' dengan kolom bernama 'Ticker' (isinya BBCA.JK, dll), 
+    # hapus tanda '#' pada dua baris di bawah ini dan hapus Opsi 1 di atas.
+    # df_saham = pd.read_csv("saham_idx.csv")
+    # tickers = df_saham['Ticker'].tolist()
+    
+    return tickers
 
-# 1. Input Ticker Saham (Default 10 saham kapitalisasi besar IHSG)
-default_tickers = "BBCA.JK, BBRI.JK, BMRI.JK, TLKM.JK, ASII.JK, UNTR.JK, ICBP.JK, INDF.JK, BBNI.JK, AMMN.JK"
-tickers_input = st.text_input("Masukkan Ticker Saham (pisahkan dengan koma):", default_tickers)
-tickers = [t.strip() for t in tickers_input.split(',')]
-
-# 2. Input Pemilihan Bulan dan Tahun
-col1, col2 = st.columns(2)
-with col1:
-    # Nama bulan untuk display
-    nama_bulan = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", 
-                  "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
-    selected_month_name = st.selectbox("Pilih Bulan:", nama_bulan, index=datetime.now().month - 1)
-    selected_month = nama_bulan.index(selected_month_name) + 1
-with col2:
-    selected_year = st.selectbox("Pilih Tahun:", list(range(2020, 2030)), index=list(range(2020, 2030)).index(datetime.now().year))
-
-if st.button("Tarik Data & Buat Tabel"):
-    with st.spinner("Mengunduh data saham..."):
-        # 3. Menentukan rentang tanggal berdasarkan bulan & tahun yang dipilih
-        _, last_day = calendar.monthrange(selected_year, selected_month)
-        start_date = f"{selected_year}-{selected_month:02d}-01"
+# --- FUNGSI UNTUK MENGHITUNG METRIK ---
+def process_stock_data(ticker):
+    try:
+        # Ambil data 3 bulan terakhir (untuk mendapatkan MA50)
+        stock = yf.Ticker(ticker)
+        df = stock.history(period="3mo")
         
-        # Tambah 1 hari di end_date agar hari terakhir di bulan tersebut ikut terambil oleh yfinance
-        end_date_obj = datetime(selected_year, selected_month, last_day) + timedelta(days=1)
-        end_date = end_date_obj.strftime("%Y-%m-%d")
+        if len(df) < 50: # Lewati jika data kurang dari 50 hari (saham baru/tidak likuid)
+            return None
+            
+        # 1. Hitung Moving Average (MA20 & MA50) dari harga Close
+        df['MA20'] = df['Close'].rolling(window=20).mean()
+        df['MA50'] = df['Close'].rolling(window=50).mean()
+        
+        # 2. Hitung Metrik Harian
+        # Open-Low % = (Open - Low) / Open * 100
+        df['Open-Low%'] = ((df['Open'] - df['Low']) / df['Open']) * 100
+        
+        # Close-Low/Range % = (Close - Low) / (High - Low) * 100
+        # Menggunakan np.where untuk menghindari error pembagian dengan nol jika High == Low
+        range_hl = df['High'] - df['Low']
+        df['Close-Low/Range%'] = np.where(range_hl == 0, 0, ((df['Close'] - df['Low']) / range_hl) * 100)
+        
+        # High-Open % = (High - Open) / Open * 100
+        df['High-Open%'] = ((df['High'] - df['Open']) / df['Open']) * 100
+        
+        # Return Harian = Persentase perubahan dari harga Close kemarin
+        df['Return%'] = df['Close'].pct_change() * 100
+        
+        # Volume Lot = Volume dibagi 100
+        df['Volume_Lot'] = df['Volume'] / 100
 
-        # 4. Download data menggunakan yfinance
-        df = yf.download(tickers, start=start_date, end=end_date, progress=False)
+        # 3. Filter data hanya untuk 1 Bulan Terakhir (sekitar 20 hari bursa)
+        df_1_month = df.tail(20).copy()
+        
+        # 4. Ambil Harga Terakhir & Cek Syarat Uptrend di hari terakhir
+        latest_close = df_1_month['Close'].iloc[-1]
+        latest_ma20 = df_1_month['MA20'].iloc[-1]
+        latest_ma50 = df_1_month['MA50'].iloc[-1]
+        
+        is_uptrend = (latest_close > latest_ma20) and (latest_ma20 > latest_ma50)
+        
+        # 5. Hitung Rata-rata 1 bulan untuk tiap metrik
+        avg_open_low = df_1_month['Open-Low%'].mean()
+        avg_close_low_range = df_1_month['Close-Low/Range%'].mean()
+        avg_high_open = df_1_month['High-Open%'].mean()
+        avg_return = df_1_month['Return%'].mean()
+        avg_vol_lot = df_1_month['Volume_Lot'].mean()
+        
+        # Kembalikan sebagai satu baris data (dictionary)
+        return {
+            "Ticker": ticker,
+            "Harga Terakhir": round(latest_close, 0),
+            "Status": "Uptrend 🟢" if is_uptrend else "Downtrend/Sideways 🔴",
+            "Rata2 Open-Low%": round(avg_open_low, 2),
+            "Rata2 Close-Low/Range%": round(avg_close_low_range, 2),
+            "Rata2 High-Open%": round(avg_high_open, 2),
+            "Rata2 Return Harian%": round(avg_return, 2),
+            "Rata2 Volume Lot": round(avg_vol_lot, 0)
+        }
+        
+    except Exception as e:
+        return None # Abaikan jika ada error pada saham tertentu
 
-        if df.empty:
-            st.warning("Data tidak ditemukan untuk periode tersebut. Pastikan ticker valid atau pasar sedang buka di bulan tersebut.")
-        else:
-            # 5. Ekstrak kolom High dan Low
-            # Jika hanya 1 ticker, strukturnya berbeda dengan banyak ticker, jadi kita handle keduanya
-            if len(tickers) == 1:
-                high = df[['High']]
-                low = df[['Low']]
-                # Rename column to match the logic below
-                high.columns = tickers
-                low.columns = tickers
-            else:
-                high = df['High']
-                low = df['Low']
+# --- TOMBOL UNTUK MEMULAI ---
+if st.button("Tarik Data & Hitung Metrik"):
+    tickers = get_tickers()
+    hasil_akhir = []
+    
+    # Membuat progress bar agar tampilan lebih interaktif
+    progress_text = "Sedang mengunduh dan menghitung data..."
+    my_bar = st.progress(0, text=progress_text)
+    
+    total_saham = len(tickers)
+    
+    for i, ticker in enumerate(tickers):
+        data = process_stock_data(ticker)
+        if data is not None:
+            hasil_akhir.append(data)
             
-            # 6. Hitung persentase fluktuasi
-            spread_pct = ((high - low) / low) * 100
-            
-            # 7. Pivot tabel (Transpose) agar Baris = Ticker, Kolom = Tanggal
-            result_df = spread_pct.T
-            
-            # Ubah format header kolom menjadi tanggal saja (misal: 01-10-2025)
-            result_df.columns = result_df.columns.strftime('%d-%m-%Y')
-            
-            # Urutkan index (ticker) sesuai abjad
-            result_df = result_df.sort_index()
-
-            # 8. Tampilkan ke dalam dataframe Streamlit dengan format 2 angka di belakang koma plus tanda '%'
-            st.success(f"Berhasil menarik data untuk {len(tickers)} saham pada {selected_month_name} {selected_year}.")
-            st.dataframe(result_df.style.format("{:.2f}%", na_rep="Libur/NaN"), use_container_width=True)
+        # Perbarui progress bar
+        my_bar.progress((i + 1) / total_saham, text=f"Memproses {ticker} ({i+1}/{total_saham})")
+    
+    # Kosongkan progress bar setelah selesai
+    my_bar.empty()
+    
+    # Ubah daftar hasil menjadi tabel (DataFrame)
+    if hasil_akhir:
+        df_hasil = pd.DataFrame(hasil_akhir)
+        
+        # Memisahkan yang Uptrend dan Semua Data
+        df_uptrend = df_hasil[df_hasil["Status"] == "Uptrend 🟢"]
+        
+        st.subheader("🔥 Saham Uptrend (Close > MA20 > MA50)")
+        st.dataframe(df_uptrend, use_container_width=True)
+        
+        st.subheader("📊 Semua Metrik Saham (Rata-rata 1 Bulan)")
+        st.dataframe(df_hasil, use_container_width=True)
+    else:
+        st.warning("Tidak ada data yang berhasil ditarik.")
