@@ -5,6 +5,7 @@ plotly
 xlsxwriter
 matplotlib
 numpy
+seaborn
 
 openpyxl
 streamlit-autorefresh
