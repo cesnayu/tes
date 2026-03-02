@@ -6,6 +6,7 @@ xlsxwriter
 matplotlib
 numpy
 seaborn
+requests-cache
 
 openpyxl
 streamlit-autorefresh
