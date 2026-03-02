@@ -8,6 +8,7 @@ numpy
 seaborn
 requests-cache
 requests
+rich
 
 openpyxl
 streamlit-autorefresh
