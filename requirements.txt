@@ -7,6 +7,7 @@ matplotlib
 numpy
 seaborn
 requests-cache
+requests
 
 openpyxl
 streamlit-autorefresh
