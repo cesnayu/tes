@@ -3,61 +3,60 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 
-# 1. List saham kamu (saya ringkas contohnya, masukkan list 700+ milikmu di sini)
-daftar_saham = ["BREN.JK", "BBCA.JK", "DSSA.JK", "BBRI.JK", "TLKM.JK"] # ... masukkan sisanya
-
-def ambil_data_tunggal(ticker):
-    """Fungsi kecil untuk mengambil net income satu saham"""
+def fetch_data(ticker):
     try:
-        tko = yf.Ticker(ticker)
-        # Ambil financials dengan periode tahunan
-        df_fin = tko.get_financials(freq='yearly')
-        
-        if not df_fin.empty and 'Net Income' in df_fin.index:
-            # Ambil 3 kolom teratas (3 tahun terakhir)
-            income_data = df_fin.loc['Net Income'].head(3)
-            res = []
-            for date, val in income_data.items():
-                res.append({
-                    'Ticker': ticker,
-                    'Tahun': date.year,
-                    'Net Income': val
-                })
-            return res
-    except Exception:
-        return None
-    return None
+        stock = yf.Ticker(ticker)
+        df_fin = stock.financials
 
-def main():
-    print(f"Memulai proses {len(daftar_saham)} saham...")
-    start_time = time.time()
-    
-    final_data = []
-    
-    # Menggunakan ThreadPool untuk menjalankan banyak request sekaligus
-    # max_workers=20 adalah angka aman agar tidak langsung di-ban
-    with ThreadPoolExecutor(max_workers=20) as executor:
-        future_to_ticker = {executor.submit(ambil_data_tunggal, t): t for t in daftar_saham}
-        
-        counter = 0
-        for future in as_completed(future_to_ticker):
-            result = future.result()
-            if result:
-                final_data.extend(result)
-            
-            counter += 1
-            if counter % 50 == 0:
-                print(f"Selesai memproses {counter} saham...")
+        if df_fin is None or df_fin.empty:
+            print(f"{ticker} financials kosong")
+            return []
 
-    # Simpan hasil
-    if final_data:
-        df = pd.DataFrame(final_data)
-        df.to_csv("hasil_net_income_700.csv", index=False)
-        print(f"\n--- SELESAI dalam {round(time.time() - start_time, 2)} detik ---")
-        print(f"Data disimpan di: hasil_net_income_700.csv")
-        print(df.head())
-    else:
-        print("Gagal mengambil data sama sekali. Cek koneksi atau coba 10 saham dulu.")
+        # cari baris Net Income
+        if "Net Income" not in df_fin.index:
+            print(f"{ticker} tidak ada Net Income")
+            return []
 
-if __name__ == "__main__":
-    main()
+        income = df_fin.loc["Net Income"].head(3)
+
+        data = []
+        for date, val in income.items():
+            data.append({
+                "Ticker": ticker,
+                "Tahun": pd.to_datetime(date).year,
+                "Net Income": val
+            })
+
+        print(f"{ticker} berhasil")
+        return data
+
+    except Exception as e:
+        print(f"Error {ticker}: {e}")
+        return []
+
+
+daftar_saham = ["BREN.JK", "BBCA.JK", "DSSA.JK", "BBRI.JK", "TLKM.JK"]
+
+print(f"Memulai pengambilan data {len(daftar_saham)} saham...")
+
+final_results = []
+
+# paralel tapi tidak terlalu agresif
+with ThreadPoolExecutor(max_workers=5) as executor:
+    futures = [executor.submit(fetch_data, t) for t in daftar_saham]
+
+    for future in as_completed(futures):
+        result = future.result()
+        final_results.extend(result)
+
+df_hasil = pd.DataFrame(final_results)
+
+if not df_hasil.empty:
+    print("\n--- BERHASIL ---")
+    print(df_hasil.head())
+
+    df_hasil.to_csv("net_income_700.csv", index=False)
+    print("Data disimpan ke net_income_700.csv")
+
+else:
+    print("Tidak ada data ditemukan")
