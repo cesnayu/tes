@@ -1,24 +1,15 @@
+import streamlit as st
 import yfinance as yf
-import pandas as pd
 
-tickers = ["BBCA.JK", "BBRI.JK", "TLKM.JK"]
+st.title("Stock Dashboard")
 
-data = []
+ticker = st.text_input("Ticker", "BBCA.JK")
 
-for t in tickers:
-    stock = yf.Ticker(t)
-    
-    # income statement
-    income = stock.financials.T
-    
-    net_income = income["Net Income"].head(3)
-    
-    # price history
-    price = stock.history(period="3y")
-    
-    data.append({
-        "ticker": t,
-        "net_income": net_income
-    })
+stock = yf.Ticker(ticker)
 
-print(data)
+data = stock.history(period="3y")
+
+st.subheader("Price Data")
+st.dataframe(data)
+
+st.line_chart(data["Close"])
