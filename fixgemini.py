@@ -267,48 +267,109 @@ with tabs[2]:
 
 # === TAB 4: WIN/LOSS ===
 with tabs[3]:
-    st.subheader("🎲 Win/Loss Heatmap")
-    txt = st.text_input("Ketik Kode Saham:", value="BBCA, GOTO")
+    st.subheader("🎲 Win/Loss Heatmap (Compact Mode)")
+
+# Styling CSS untuk mengecilkan kotak dan mengatur teks rata kiri-kanan
+st.markdown("""
+    <style>
+    .stock-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 5px 10px;
+        background-color: #f0f2f6;
+        border-radius: 5px;
+        margin-bottom: 5px;
+    }
+    .wl-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-bottom: 15px;
+    }
+    .wl-box-mini {
+        width: 45px;
+        height: 45px;
+        border-radius: 4px;
+        color: white;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        font-size: 9px;
+        line-height: 1;
+    }
+    .wl-pct-mini { font-weight: bold; font-size: 10px; }
+    </style>
+    """, unsafe_allow_html=True)
+
+txt = st.text_input("Ketik Kode Saham (pisahkan dengan koma):", value="BBCA, GOTO, ASII, TLKM, BMRI")
+
+if txt:
+    ticks = [x.strip().upper() for x in txt.split(",") if x.strip()]
+    clean_ticks = [f"{t}.JK" if not t.endswith(".JK") else t for t in ticks]
     
-    if txt:
-        ticks = [x.strip().upper() for x in txt.split(",") if x.strip()]
-        clean_ticks = []
-        for t in ticks:
-            if not t.endswith(".JK"): clean_ticks.append(f"{t}.JK")
-            else: clean_ticks.append(t)
-            
-        if clean_ticks:
-            with st.spinner("Fetching..."):
-                d_wl = get_data(clean_ticks, period="3mo")
-            
-            for t in clean_ticks:
-                try:
-                    dt = d_wl[t] if len(clean_ticks)>1 else d_wl
-                    dt = dt.dropna()
-                    if dt.empty: continue
+    # --- FITUR PAGINATION (20 Saham per Halaman) ---
+    limit = 20
+    total_saham = len(clean_ticks)
+    num_pages = (total_saham // limit) + (1 if total_saham % limit > 0 else 0)
+    
+    if num_pages > 1:
+        page = st.sidebar.number_input("Halaman", min_value=1, max_value=num_pages, step=1)
+    else:
+        page = 1
+    
+    start_idx = (page - 1) * limit
+    end_idx = start_idx + limit
+    ticks_to_show = clean_ticks[start_idx:end_idx]
+
+    if ticks_to_show:
+        with st.spinner(f"Memuat halaman {page}..."):
+            # Mengambil data 30 hari (period 1mo cukup untuk 30 hari kalender)
+            d_wl = get_data(ticks_to_show, period="1mo")
+        
+        for t in ticks_to_show:
+            try:
+                # Ambil data spesifik ticker
+                dt = d_wl[t] if len(ticks_to_show) > 1 else d_wl
+                dt = dt.dropna().copy()
+                if dt.empty: continue
+                
+                # Hitung Return & Hari Positif (30 hari terakhir)
+                dt['Pct'] = dt['Close'].pct_change() * 100
+                pos_days = len(dt[dt['Pct'] > 0])
+                
+                # Header Saham (Kiri: Nama, Kanan: Hari Positif)
+                st.markdown(f"""
+                    <div class="stock-header">
+                        <span style="font-weight: bold;">{t}</span>
+                        <span style="font-size: 0.85em;">Positif: <b>{pos_days}</b> / {len(dt)-1} hari</span>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                # Heatmap Mini (Gunakan Container Flex agar menyamping)
+                last_data = dt.tail(20) # Menampilkan 20 perubahan terakhir
+                
+                html_heatmap = '<div class="wl-container">'
+                for date, row in last_data.iterrows():
+                    if pd.isna(row['Pct']): continue
+                    pct = row['Pct']
+                    bg = "#00C805" if pct > 0 else "#FF333A" if pct < 0 else "#555"
                     
-                    dt['Pct'] = dt['Close'].pct_change() * 100
-                    last20 = dt.tail(20).sort_index()
-                    
-                    st.markdown(f"**{t}**")
-                    chunks = [last20.iloc[i:i+5] for i in range(0, len(last20), 5)]
-                    
-                    for chunk in chunks:
-                        cols = st.columns(5)
-                        for i, (date, row) in enumerate(chunk.iterrows()):
-                            pct = row['Pct']
-                            bg = "#00C805" if pct > 0 else "#FF333A" if pct < 0 else "#555"
-                            with cols[i]:
-                                st.markdown(f"""
-                                <div class="wl-box" style="background-color: {bg};">
-                                    <div class="wl-date">{date.strftime('%d/%m')}</div>
-                                    <div class="wl-price">{fmt_idr(row['Close'])}</div>
-                                    <div class="wl-pct">{pct:+.2f}%</div>
-                                </div>
-                                """, unsafe_allow_html=True)
-                    st.divider()
-                except: st.error(f"Gagal memuat {t}")
-            gc.collect()
+                    html_heatmap += f"""
+                        <div class="wl-box-mini" style="background-color: {bg};">
+                            <span>{date.strftime('%d/%m')}</span>
+                            <span class="wl-pct-mini">{pct:+.1f}%</span>
+                        </div>
+                    """
+                html_heatmap += '</div>'
+                
+                st.markdown(html_heatmap, unsafe_allow_html=True)
+
+            except Exception as e:
+                st.error(f"Gagal memuat {t}: {e}")
+        
+        gc.collect()
 
 # === TAB 5: CEK TANGGAL (PERSISTENT) ===
 with tabs[4]:
