@@ -64,21 +64,66 @@ st.subheader("📊 Your Portfolio")
 
 if stocks: table_data = []
 
-for s in stocks:
-    data = get_stock_data(s["ticker"])
-    if data:
-        current_price, daily_return = data
-        target_price = s["target"]
+# Membuat 3 kolom untuk tampilan
+cols = st.columns(3)
 
-        diff_percent = ((target_price - current_price) / current_price) * 100
+if len(my_stocks) == 0:
+    st.info("Belum ada saham yang dipantau. Silakan tambah melalui menu di sebelah kiri.")
 
-        table_data.append({
-            "Ticker": s["ticker"],
-            "Current Price": round(current_price, 2),
-            "Target Price": target_price,
-            "% to Target": round(diff_percent, 2),
-            "Daily Return %": round(daily_return, 2)
-        })
+# Perulangan untuk mengecek satu per satu saham di daftarmu
+for index, stock in enumerate(my_stocks):
+    symbol = stock["symbol"]
+    target = stock["targetPrice"]
+    
+    try:
+        # 1. PANGGIL FUNGSI DI SINI: Kita suruh fungsi mengambil data
+        info = get_stock_data(symbol + ".JK")
+        
+        # 2. Cek apakah fungsi berhasil mengembalikan data (tidak None)
+        if info is not None:
+            # 3. Sekarang 'info' sudah ada dan bisa kita ambil harganya
+            current_price = float(info['Close'].iloc[-1])
+            
+            if len(info) > 1:
+                prev_close = float(info['Close'].iloc[-2])
+            else:
+                prev_close = current_price
+                
+            daily_return = ((current_price - prev_close) / prev_close) * 100
+            jarak_target = ((target - current_price) / current_price) * 100
+            
+            # Memasukkan ke dalam kolom yang tepat
+            col = cols[index % 3]
+            
+            with col:
+                with st.container(border=True):
+                    st.subheader(f"{symbol}")
+                    st.metric(
+                        label="Harga Asli Saat Ini", 
+                        value=format_rupiah(current_price), 
+                        delta=f"{daily_return:.2f}% Hari Ini"
+                    )
+                    st.markdown(f"🎯 **Target Harga:** {format_rupiah(target)}")
+                    
+                    warna = "green" if jarak_target > 0 else "red"
+                    st.markdown(
+                        f"📏 **Jarak ke Target:** <span style='color:{warna}; font-weight:bold;'>{jarak_target:.2f}%</span>", 
+                        unsafe_allow_html=True
+                    )
+        else:
+            # Jika data dari Yahoo Finance kurang dari 2 hari / kosong
+            col = cols[index % 3]
+            with col:
+                with st.container(border=True):
+                    st.subheader(f"{symbol}")
+                    st.warning("Data belum lengkap di Yahoo Finance.")
+                    
+    except Exception as e:
+        col = cols[index % 3]
+        with col:
+            with st.container(border=True):
+                st.subheader(f"{symbol}")
+                st.error("Gagal memuat data. Pastikan kode benar.")
 
 df = pd.DataFrame(table_data)
 
