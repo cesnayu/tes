@@ -93,4 +93,5 @@ else: st.info("No stocks added yet.")
 st.subheader("❌ Remove Stock") 
 remove_ticker = st.text_input("Ticker to remove")
 
-if st.button("Delete"): stocks = [s for s in stocks if s["ticker"] != remove_ticker.upper()] save_data(stocks) st.success("Deleted!")
+if st.button("Delete"): stocks = [s for s in stocks if s["ticker"] != remove_ticker.upper()] 
+save_data(stocks) st.success("Deleted!")
