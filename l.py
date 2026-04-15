@@ -27,43 +27,46 @@ with col_config1:
 st.divider()
 
 # ==========================================
-# 2. PROSES DAN TAMPILAN GRID
+# 2. PROSES DAN TAMPILAN GRID (VERSI PALING AMAN)
 # ==========================================
-# Kita buat grid: 2 grafik per baris agar tidak terlihat gepeng dan kecil
 n_cols = 2 
 rows = [st.columns(n_cols) for _ in range((len(my_stocks) + n_cols - 1) // n_cols)]
-
-# Meratakan list kolom agar mudah di-loop
 cols = [col for row in rows for col in row]
 
 for i, ticker_symbol in enumerate(my_stocks):
     with cols[i]:
         try:
-            # Mengambil data
-            data = yf.download(ticker_symbol, period=yf_period)
+            # 1. Menggunakan .history() karena formatnya lebih stabil dari .download()
+            stock = yf.Ticker(ticker_symbol)
+            data = stock.history(period=yf_period)
             
-            if not data.empty:
-                # Menghitung return kumulatif untuk grafik yang lebih cantik
-                # (Harga / Harga Awal - 1) * 100
-                close_prices = data['Close']
-                return_pct = (close_prices / close_prices.iloc[0] - 1) * 100
+            if not data.empty and 'Close' in data.columns:
                 
-                # Tampilan Header Kecil
-                current_val = float(close_prices.iloc[-1])
-                change = float(return_pct.iloc[-1])
+                # 2. OBAT ANTI ERROR GRAFIK: Menghilangkan zona waktu (timezone) dari penanggalan
+                data.index = data.index.tz_localize(None)
                 
-                st.subheader(f"📈 {ticker_symbol.replace('.JK', '')}")
-                st.caption(f"Harga: Rp {current_val:,.0f} | Total Return: {change:.2f}%")
+                close_prices = data['Close'].dropna()
                 
-                # MENGGAMBAR GRAFIK
-                # Parameter height=300 atau 350 biasanya paling proporsional
-                st.area_chart(return_pct, height=300, use_container_width=True)
-                
+                if len(close_prices) >= 2:
+                    # Menghitung persentase return kumulatif
+                    return_pct = (close_prices / close_prices.iloc[0] - 1) * 100
+                    
+                    current_val = float(close_prices.iloc[-1])
+                    change = float(return_pct.iloc[-1])
+                    
+                    st.subheader(f"📈 {ticker_symbol.replace('.JK', '')}")
+                    st.caption(f"Harga: Rp {current_val:,.0f} | Total Return: {change:.2f}%")
+                    
+                    # Menggambar grafik
+                    st.area_chart(return_pct, height=300, use_container_width=True)
+                else:
+                    st.warning(f"⚠️ Data {ticker_symbol} kurang dari 2 hari.")
             else:
-                st.warning(f"Data {ticker_symbol} tidak ditemukan.")
+                st.warning(f"⚠️ Data {ticker_symbol} tidak ditemukan di Yahoo Finance.")
                 
         except Exception as e:
-            st.error(f"Error pada {ticker_symbol}")
+            # Pesan error disederhanakan agar tidak menakutkan
+            st.error(f"Grafik {ticker_symbol.replace('.JK', '')} gagal dimuat.")
 
 st.divider()
 st.info("💡 Tip: Gunakan 2 kolom (n_cols = 2) agar grafik memiliki ruang vertikal yang cukup dan tidak terlihat gepeng.")
