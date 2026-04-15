@@ -30,7 +30,6 @@ daily_return = ((current_price - prev_close) / prev_close) * 100
 
 return current_price, daily_return
 
----------- UI ----------
 
 st.set_page_config(page_title="Stock Target Dashboard", layout="wide")
 
@@ -40,7 +39,6 @@ Load saved stocks
 
 stocks = load_data()
 
----------- Add Stock ----------
 
 st.subheader("➕ Add / Update Stock") col1, col2 = st.columns(2)
 
@@ -54,7 +52,6 @@ if st.button("Save Stock"):
 if s["ticker"].upper() == ticker_input.upper(): s["target"] = target_price_input updated = True
 if not updated: stocks.append({"ticker": ticker_input.upper(), "target": target_price_input}) save_data(stocks) st.success("Saved!")
 
----------- Display Dashboard ----------
 
 st.subheader("📊 Your Portfolio")
 
@@ -80,7 +77,6 @@ df = pd.DataFrame(table_data)
 
 st.dataframe(df, use_container_width=True)
 
-# ---------- Highlight ----------
 st.subheader("🔥 Insights")
 if not df.empty:
     best = df.loc[df["% to Target"].idxmax()]
@@ -91,7 +87,6 @@ if not df.empty:
 
 else: st.info("No stocks added yet.")
 
----------- Delete ----------
 
 st.subheader("❌ Remove Stock") remove_ticker = st.text_input("Ticker to remove")
 
