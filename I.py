@@ -8,9 +8,16 @@ DATA_FILE = "stocks.json"
 
 
 
-def load_data(): if os.path.exists(DATA_FILE): with open(DATA_FILE, "r") as f: return json.load(f) return []
+def load_data():
+    if os.path.exists(DATA_FILE): 
+    with open(DATA_FILE, "r") 
+    as f: 
+        return json.load(f) 
+        return []
 
-def save_data(data): with open(DATA_FILE, "w") as f: json.dump(data, f)
+def save_data(data): 
+with open(DATA_FILE, "w") 
+as f: json.dump(data, f)
 
 def get_stock_data(ticker): stock = yf.Ticker(ticker) info = stock.history(period="2d")
 
@@ -41,7 +48,11 @@ with col1: ticker_input = st.text_input("Ticker (e.g., AAPL, BBCA.JK)")
 
 with col2: target_price_input = st.number_input("Target Price", min_value=0.0, step=0.1)
 
-if st.button("Save Stock"): if ticker_input: updated = False for s in stocks: if s["ticker"].upper() == ticker_input.upper(): s["target"] = target_price_input updated = True if not updated: stocks.append({"ticker": ticker_input.upper(), "target": target_price_input}) save_data(stocks) st.success("Saved!")
+if st.button("Save Stock"):
+    if ticker_input: updated = False 
+        for s in stocks: 
+if s["ticker"].upper() == ticker_input.upper(): s["target"] = target_price_input updated = True
+if not updated: stocks.append({"ticker": ticker_input.upper(), "target": target_price_input}) save_data(stocks) st.success("Saved!")
 
 ---------- Display Dashboard ----------
 
