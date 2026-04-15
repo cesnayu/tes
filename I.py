@@ -17,13 +17,14 @@ def load_data():
 def save_data(data): 
    with open(DATA_FILE, "w") as f: json.dump(data, f)
 
-def get_stock_data(ticker): 
-    stock = yf.Ticker(ticker) 
+def get_stock_data(ticker):
+    stock = yf.Ticker(ticker)
     info = stock.history(period="2d")
-if len(info) < 2: 
-    return None
-
-return info
+    
+    if len(info) < 2:
+        return None
+        
+    return info
 
 current_price = info["Close"].iloc[-1]
 prev_close = info["Close"].iloc[-2]
