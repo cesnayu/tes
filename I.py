@@ -23,6 +23,8 @@ def get_stock_data(ticker):
 if len(info) < 2: 
     return None
 
+return info
+
 current_price = info["Close"].iloc[-1]
 prev_close = info["Close"].iloc[-2]
 daily_return = ((current_price - prev_close) / prev_close) * 100
