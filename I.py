@@ -50,7 +50,8 @@ if st.button("Save Stock"):
     for s in stocks: 
         if s["ticker"].upper() == ticker_input.upper(): s["target"] = target_price_input 
         updated = True
-        if not updated: stocks.append({"ticker": ticker_input.upper(), "target": target_price_input}) save_data(stocks) st.success("Saved!")
+        if not updated: stocks.append({"ticker": ticker_input.upper(), "target": target_price_input}) 
+        save_data(stocks) st.success("Saved!")
 
 
 st.subheader("📊 Your Portfolio")
