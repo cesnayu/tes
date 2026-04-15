@@ -22,7 +22,7 @@ def get_stock_data(ticker):
     info = stock.history(period="2d")
 
 if len(info) < 2:
-return None
+    return None
 
 current_price = info["Close"].iloc[-1]
 prev_close = info["Close"].iloc[-2]
