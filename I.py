@@ -1,103 +1,130 @@
 import streamlit as st
-import yfinance as yf 
-import pandas as pd 
-import json 
+import yfinance as yf
+import json
 import os
 
-DATA_FILE = "stocks.json"
+# ==========================================
+# 1. PENGATURAN HALAMAN
+# ==========================================
+st.set_page_config(page_title="Dashboard Saham", layout="wide")
 
+st.title("📈 Dashboard Saham Pilihanku")
+st.markdown("Sumber Data: **Yahoo Finance**")
 
+# ==========================================
+# 2. SISTEM PENYIMPANAN DATA (JSON)
+# ==========================================
+DATA_FILE = "saham_pilihan.json"
+
+SAHAM_DEFAULT = [
+    {"symbol": "BBCA", "targetPrice": 10500},
+    {"symbol": "BBRI", "targetPrice": 6000},
+    {"symbol": "GOTO", "targetPrice": 150}
+]
 
 def load_data():
     if os.path.exists(DATA_FILE): 
         with open(DATA_FILE, "r") as f: 
-           return json.load(f) 
-           return []
+            return json.load(f) 
+    return SAHAM_DEFAULT
 
-def save_data(data): 
-   with open(DATA_FILE, "w") as f: json.dump(data, f)
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f)
 
+my_stocks = load_data()
+
+# ==========================================
+# 3. FUNGSI PENGAMBIL DATA & FORMAT ANGKA
+# ==========================================
 def get_stock_data(ticker):
-    stock = yf.Ticker(ticker)
-    info = stock.history(period="2d")
-    
-    if len(info) < 2:
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.history(period="2d")
+        if len(info) < 2:
+            return None
+        return info
+    except Exception:
         return None
+
+def format_rupiah(angka):
+    return f"Rp {angka:,.0f}".replace(",", ".")
+
+# ==========================================
+# 4. MENU SAMPING (SIDEBAR) UNTUK PENGATURAN
+# ==========================================
+st.sidebar.header("⚙️ Pengaturan Saham")
+
+with st.sidebar.form("form_tambah"):
+    st.subheader("➕ Tambah Saham Baru")
+    kode_baru = st.text_input("Kode Saham (Tanpa .JK)").upper()
+    target_baru = st.number_input("Target Harga (Rp)", min_value=1, step=100)
+    tombol_tambah = st.form_submit_button("Tambah Saham")
+
+    if tombol_tambah and kode_baru:
+        sudah_ada = False
+        for saham in my_stocks:
+            if saham["symbol"] == kode_baru:
+                sudah_ada = True
+                break
         
-    return info
+        if sudah_ada:
+            st.sidebar.error("Saham tersebut sudah ada di daftar!")
+        else:
+            my_stocks.append({"symbol": kode_baru, "targetPrice": target_baru})
+            save_data(my_stocks)
+            st.rerun()
 
-current_price = info["Close"].iloc[-1]
-prev_close = info["Close"].iloc[-2]
-daily_return = ((current_price - prev_close) / prev_close) * 100
-def hitung_harga_saham(ticker):
-    # ... (kode lainnya di sini) ...
-    daily_return = ((current_price - prev_close) / prev_close) * 100
-    
-    # Baris return INI harus lurus dengan tulisan daily_return di atasnya
-    return current_price, daily_return
+st.sidebar.divider()
 
-st.set_page_config(page_title="Stock Target Dashboard", layout="wide")
+st.sidebar.subheader("🗑️ Hapus Saham")
+daftar_kode = [saham["symbol"] for saham in my_stocks]
 
-st.title("📈 Stock Target Dashboard (Yahoo Finance)")
+if len(daftar_kode) > 0:
+    saham_dihapus = st.sidebar.selectbox("Pilih saham yang ingin dihapus:", daftar_kode)
+    if st.sidebar.button("Hapus Saham"):
+        my_stocks = [saham for saham in my_stocks if saham["symbol"] != saham_dihapus]
+        save_data(my_stocks)
+        st.rerun()
+else:
+    st.sidebar.info("Daftar saham kosong.")
 
-stocks = load_data()
+# ==========================================
+# 5. MENGGAMBAR DASHBOARD (TAMPILAN UTAMA)
+# ==========================================
+if st.button("🔄 Perbarui Data Sekarang"):
+    st.rerun()
 
+st.divider()
 
-st.subheader("➕ Add / Update Stock") 
-col1, col2 = st.columns(2)
-
-with col1: ticker_input = st.text_input("Ticker (e.g., AAPL, BBCA.JK)")
-
-with col2: target_price_input = st.number_input("Target Price", min_value=0.0, step=0.1)
-
-if st.button("Save Stock"):
-    if ticker_input: updated = False 
-    for s in stocks: 
-        if s["ticker"].upper() == ticker_input.upper(): s["target"] = target_price_input 
-        updated = True
-        if not updated: stocks.append({"ticker": ticker_input.upper(), "target": target_price_input}) 
-        save_data(stocks) 
-        st.success("Saved!")
-
-
-st.subheader("📊 Your Portfolio")
-
-if stocks: table_data = []
-
-# Membuat 3 kolom untuk tampilan
 cols = st.columns(3)
 
 if len(my_stocks) == 0:
     st.info("Belum ada saham yang dipantau. Silakan tambah melalui menu di sebelah kiri.")
 
-# Perulangan untuk mengecek satu per satu saham di daftarmu
 for index, stock in enumerate(my_stocks):
     symbol = stock["symbol"]
     target = stock["targetPrice"]
     
-    try:
-        # 1. PANGGIL FUNGSI DI SINI: Kita suruh fungsi mengambil data
-        info = get_stock_data(symbol + ".JK")
-        
-        # 2. Cek apakah fungsi berhasil mengembalikan data (tidak None)
-        if info is not None:
-            # 3. Sekarang 'info' sudah ada dan bisa kita ambil harganya
-            current_price = float(info['Close'].iloc[-1])
+    # Memanggil fungsi untuk mengambil data
+    info = get_stock_data(symbol + ".JK")
+    
+    # Memilih kolom tempat kartu akan digambar
+    col = cols[index % 3]
+    
+    with col:
+        with st.container(border=True):
+            st.subheader(f"{symbol}")
             
-            if len(info) > 1:
-                prev_close = float(info['Close'].iloc[-2])
-            else:
-                prev_close = current_price
-                
-            daily_return = ((current_price - prev_close) / prev_close) * 100
-            jarak_target = ((target - current_price) / current_price) * 100
-            
-            # Memasukkan ke dalam kolom yang tepat
-            col = cols[index % 3]
-            
-            with col:
-                with st.container(border=True):
-                    st.subheader(f"{symbol}")
+            # Cek apakah data berhasil diambil dan tidak kosong
+            if info is not None and not info.empty:
+                try:
+                    current_price = float(info['Close'].iloc[-1])
+                    prev_close = float(info['Close'].iloc[-2])
+                    
+                    daily_return = ((current_price - prev_close) / prev_close) * 100
+                    jarak_target = ((target - current_price) / current_price) * 100
+                    
                     st.metric(
                         label="Harga Asli Saat Ini", 
                         value=format_rupiah(current_price), 
@@ -110,39 +137,9 @@ for index, stock in enumerate(my_stocks):
                         f"📏 **Jarak ke Target:** <span style='color:{warna}; font-weight:bold;'>{jarak_target:.2f}%</span>", 
                         unsafe_allow_html=True
                     )
-        else:
-            # Jika data dari Yahoo Finance kurang dari 2 hari / kosong
-            col = cols[index % 3]
-            with col:
-                with st.container(border=True):
-                    st.subheader(f"{symbol}")
-                    st.warning("Data belum lengkap di Yahoo Finance.")
-                    
-    except Exception as e:
-        col = cols[index % 3]
-        with col:
-            with st.container(border=True):
-                st.subheader(f"{symbol}")
-                st.error("Gagal memuat data. Pastikan kode benar.")
-
-df = pd.DataFrame(table_data)
-
-st.dataframe(df, use_container_width=True)
-
-st.subheader("🔥 Insights")
-if not df.empty:
-    best = df.loc[df["% to Target"].idxmax()]
-    worst = df.loc[df["Daily Return %"].idxmin()]
-
-    st.write(f"🚀 Most Upside: {best['Ticker']} ({best['% to Target']}%)")
-    st.write(f"📉 Worst Today: {worst['Ticker']} ({worst['Daily Return %']}%)")
-
-else: st.info("No stocks added yet.")
-
-
-st.subheader("❌ Remove Stock") 
-remove_ticker = st.text_input("Ticker to remove")
-
-if st.button("Delete"): stocks = [s for s in stocks if s["ticker"] != remove_ticker.upper()] 
-save_data(stocks) 
-st.success("Deleted!")
+                except Exception as e:
+                    # Jika ada error spesifik pada perhitungan
+                    st.error("Gagal menghitung harga.")
+            else:
+                # Jika data belum tersedia di Yahoo Finance
+                st.warning("Menunggu data pasar / Libur.")
