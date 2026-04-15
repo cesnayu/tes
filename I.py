@@ -29,8 +29,7 @@ def get_stock_data(ticker):
 current_price = info["Close"].iloc[-1]
 prev_close = info["Close"].iloc[-2]
 daily_return = ((current_price - prev_close) / prev_close) * 100
-
-    return current_price, daily_return
+return current_price, daily_return
 
 
 st.set_page_config(page_title="Stock Target Dashboard", layout="wide")
