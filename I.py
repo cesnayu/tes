@@ -35,8 +35,6 @@ st.set_page_config(page_title="Stock Target Dashboard", layout="wide")
 
 st.title("📈 Stock Target Dashboard (Yahoo Finance)")
 
-Load saved stocks
-
 stocks = load_data()
 
 
