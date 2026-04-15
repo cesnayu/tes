@@ -38,7 +38,8 @@ st.title("📈 Stock Target Dashboard (Yahoo Finance)")
 stocks = load_data()
 
 
-st.subheader("➕ Add / Update Stock") col1, col2 = st.columns(2)
+st.subheader("➕ Add / Update Stock") 
+col1, col2 = st.columns(2)
 
 with col1: ticker_input = st.text_input("Ticker (e.g., AAPL, BBCA.JK)")
 
