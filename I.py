@@ -1,7 +1,8 @@
 import streamlit as st
 import yfinance as yf 
 import pandas as pd 
-import json import os
+import json 
+import os
 
 DATA_FILE = "stocks.json"
 
