@@ -9,6 +9,8 @@ seaborn
 requests-cache
 requests
 rich
+json
+os
 
 openpyxl
 streamlit-autorefresh
