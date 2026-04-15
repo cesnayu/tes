@@ -20,8 +20,8 @@ def save_data(data):
 def get_stock_data(ticker): 
     stock = yf.Ticker(ticker) 
     info = stock.history(period="2d")
-
-if len(info) < 2: return None
+if len(info) < 2: 
+    return None
 
 current_price = info["Close"].iloc[-1]
 prev_close = info["Close"].iloc[-2]
