@@ -49,7 +49,7 @@ if st.button("Save Stock"):
     if ticker_input: updated = False 
     for s in stocks: 
         if s["ticker"].upper() == ticker_input.upper(): s["target"] = target_price_input 
-            updated = True
+        updated = True
         if not updated: stocks.append({"ticker": ticker_input.upper(), "target": target_price_input}) save_data(stocks) st.success("Saved!")
 
 
