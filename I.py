@@ -15,8 +15,7 @@ def load_data():
            return []
 
 def save_data(data): 
-with open(DATA_FILE, "w") 
-as f: json.dump(data, f)
+   with open(DATA_FILE, "w") as f: json.dump(data, f)
 
 def get_stock_data(ticker): stock = yf.Ticker(ticker) info = stock.history(period="2d")
 
