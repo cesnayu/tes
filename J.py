@@ -94,9 +94,115 @@ with tab1:
 with tab2:
     st.write("Lihat pergerakan harga saham secara visual. Anda bisa memasukkan list saham menyamping (koma) atau ke bawah (enter).")
     
-    # Pengaturan Range Waktu
-    col1, col2 = st.columns([1, 3])
+    # Pengaturan Range Waktu & Jenis Grafik dibagi ke 3 kolom
+    col1, col2, col3 = st.columns([1, 1, 2])
     with col1:
+        rentang_waktu = st.radio(
+            "Pilih Rentang Waktu:",
+            ("1 Hari", "5 Hari", "1 Bulan", "3 Bulan", "12 Bulan")
+        )
+    with col2:
+        jenis_grafik = st.radio(
+            "Pilih Jenis Grafik:",
+            ("Line", "Candlestick")
+        )
+    
+    range_mapping = {
+        "1 Hari": ("1d", "5m"),
+        "5 Hari": ("5d", "15m"),
+        "1 Bulan": ("1mo", "1d"),
+        "3 Bulan": ("3mo", "1d"),
+        "12 Bulan": ("1y", "1d")
+    }
+    yf_period, yf_interval = range_mapping[rentang_waktu]
+
+    with col3:
+        contoh_input = "BEEF\nFOOD\nCARE\nPEGE\nNICL\nKRYA\nAKSI"
+        grafik_input = st.text_area(
+            "Masukkan List Saham:", 
+            contoh_input,
+            height=150,
+            key="input_grafik"
+        )
+    
+    if st.button("Tampilkan Grafik"):
+        raw_tickers = grafik_input.replace('\n', ',').split(',')
+        clean_tickers = []
+        
+        for t in raw_tickers:
+            t = t.strip().upper()
+            if t:
+                if '.' not in t:
+                    t += '.JK'
+                if t not in clean_tickers:
+                    clean_tickers.append(t)
+                    
+        if not clean_tickers:
+            st.warning("Silakan masukkan minimal satu kode saham.")
+        else:
+            with st.spinner("Membuat grafik..."):
+                for ticker in clean_tickers:
+                    try:
+                        stock = yf.Ticker(ticker)
+                        hist = stock.history(period=yf_period, interval=yf_interval)
+                        
+                        if not hist.empty:
+                            # Menentukan harga terendah dan tertinggi berdasarkan jenis grafik
+                            if jenis_grafik == "Candlestick":
+                                min_price = hist['Low'].min()
+                                max_price = hist['High'].max()
+                            else:
+                                min_price = hist['Close'].min()
+                                max_price = hist['Close'].max()
+                                
+                            # Menghitung padding (jarak atas dan bawah)
+                            price_diff = max_price - min_price
+                            if price_diff == 0: # Jika harga stagnan, beri sedikit margin manual
+                                price_diff = min_price * 0.01 
+                                
+                            # Tambahkan jarak 10% dari selisih harga agar tidak menempel di garis
+                            padding = price_diff * 0.1 
+                            
+                            fig = go.Figure()
+                            
+                            # Menentukan tipe plot yang digambar
+                            if jenis_grafik == "Candlestick":
+                                fig.add_trace(go.Candlestick(
+                                    x=hist.index,
+                                    open=hist['Open'],
+                                    high=hist['High'],
+                                    low=hist['Low'],
+                                    close=hist['Close'],
+                                    name=ticker
+                                ))
+                            else:
+                                fig.add_trace(go.Scatter(
+                                    x=hist.index,
+                                    y=hist['Close'],
+                                    mode='lines',
+                                    name=ticker,
+                                    line=dict(width=2)
+                                ))
+                            
+                            # Mengatur layout
+                            fig.update_layout(
+                                title=f"<b>{ticker}</b> - Rentang: {rentang_waktu}",
+                                yaxis_title="Harga (Rp)",
+                                xaxis_title="Waktu",
+                                height=350, # Ketinggian diturunkan agar lebih proporsional / melebar
+                                margin=dict(l=40, r=40, t=50, b=20),
+                                yaxis=dict(
+                                    range=[min_price - padding, max_price + padding],
+                                    autorange=False
+                                ) 
+                            )
+                            
+                            fig.update_xaxes(rangeslider_visible=False)
+                            st.plotly_chart(fig, use_container_width=True)
+                        else:
+                            st.warning(f"Data tidak tersedia untuk {ticker} pada rentang waktu {rentang_waktu}.")
+                    except Exception as e:
+                        st.error(f"Terjadi kesalahan saat memuat grafik {ticker}.")
         rentang_waktu = st.radio(
             "Pilih Rentang Waktu:",
             ("1 Hari", "5 Hari", "1 Bulan", "3 Bulan", "12 Bulan")
